@@ -35,5 +35,5 @@ void MTLogSetShortLoggingFunction(void (*function)(NSString *, va_list args)) {
 }
 
 void MTLogSetEnabled(bool enabled) {
-    MTLogEnabledValue = enabled;
+    MTLogEnabledValue = true;
 }
