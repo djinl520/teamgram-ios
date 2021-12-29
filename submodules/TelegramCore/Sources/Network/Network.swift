@@ -488,7 +488,7 @@ func initializedNetwork(accountId: AccountRecordId, arguments: NetworkInitializa
             }
             
             context.keychain = keychain
-            var wrappedAdditionalSource: MTSignal?
+            // var wrappedAdditionalSource: MTSignal?
             #if os(iOS)
             if #available(iOS 10.0, *), !supplementary {
                 var cloudDataContextValue: CloudDataContext?
@@ -499,18 +499,18 @@ func initializedNetwork(accountId: AccountRecordId, arguments: NetworkInitializa
                     let _ = cloudDataContext.swap(cloudDataContextValue)
                 }
                 
-                if let cloudDataContext = cloudDataContextValue {
-                    wrappedAdditionalSource = MTSignal(generator: { subscriber in
-                        let disposable = cloudDataContext.get(phoneNumber: .single(phoneNumber)).start(next: { value in
-                            subscriber?.putNext(value)
-                        }, completed: {
-                            subscriber?.putCompletion()
-                        })
-                        return MTBlockDisposable(block: {
-                            disposable.dispose()
-                        })
-                    })
-                }
+                //if let cloudDataContext = cloudDataContextValue {
+                    // wrappedAdditionalSource = MTSignal(generator: { subscriber in
+                    //    let disposable = cloudDataContext.get(phoneNumber: .single(phoneNumber)).start(next: { value in
+                    //        subscriber?.putNext(value)
+                    //    }, completed: {
+                    //        subscriber?.putCompletion()
+                    //    })
+                    //    return MTBlockDisposable(block: {
+                    //        disposable.dispose()
+                    //    })
+                    //})
+                //}
             }
             #endif
             // context.setDiscoverBackupAddressListSignal(MTBackupAddressSignals.fetchBackupIps(testingEnvironment, currentContext: context, additionalSource: wrappedAdditionalSource, phoneNumber: phoneNumber))
