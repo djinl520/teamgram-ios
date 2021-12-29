@@ -41,7 +41,13 @@ private func defaultNavigationForPeerId(_ peerId: PeerId?, navigation: ChatContr
 }
 
 func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, urlContext: OpenURLContext, navigationController: NavigationController?, openPeer: @escaping (PeerId, ChatControllerInteractionNavigateToPeer) -> Void, sendFile: ((FileMediaReference) -> Void)?, sendSticker: ((FileMediaReference, ASDisplayNode, CGRect) -> Bool)?, requestMessageActionUrlAuth: ((MessageActionUrlSubject) -> Void)? = nil, joinVoiceChat: ((PeerId, String?, CachedChannelData.ActiveCall) -> Void)?, present: @escaping (ViewController, Any?) -> Void, dismissInput: @escaping () -> Void, contentContext: Any?) {
-    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+    let updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)?
+    if case let .chat(maybeUpdatedPresentationData) = urlContext {
+        updatedPresentationData = maybeUpdatedPresentationData
+    } else {
+        updatedPresentationData = nil
+    }
+    let presentationData = updatedPresentationData?.initial ?? context.sharedContext.currentPresentationData.with { $0 }
     switch resolvedUrl {
         case let .externalUrl(url):
             context.sharedContext.openExternalUrl(context: context, urlContext: urlContext, url: url, forceExternal: false, presentationData: context.sharedContext.currentPresentationData.with { $0 }, navigationController: navigationController, dismissInput: dismissInput)
@@ -53,7 +59,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
             if let peerId = peerId {
                 openPeer(peerId, defaultNavigationForPeerId(peerId, navigation: navigation))
             } else {
-                present(textAlertController(context: context, title: nil, text: presentationData.strings.Resolve_ErrorNotFound, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
+                present(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: presentationData.strings.Resolve_ErrorNotFound, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
             }
         case .inaccessiblePeer:
             present(standardTextAlertController(theme: AlertControllerTheme(presentationData: presentationData), title: nil, text: presentationData.strings.Conversation_ErrorInaccessibleMessage, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
@@ -97,7 +103,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
             dismissInput()
             navigationController?.pushViewController(controller)
         case let .channelMessage(peerId, messageId, timecode):
-            openPeer(peerId, .chat(textInputState: nil, subject: .message(id: messageId, highlight: true, timecode: timecode), peekData: nil))
+            openPeer(peerId, .chat(textInputState: nil, subject: .message(id: .id(messageId), highlight: true, timecode: timecode), peekData: nil))
         case let .replyThreadMessage(replyThreadMessage, messageId):
             if let navigationController = navigationController {
                 let _ = ChatControllerImpl.openMessageReplies(context: context, navigationController: navigationController, present: { c, a in
@@ -106,7 +112,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
             }
         case let .stickerPack(name):
             dismissInput()
-            if false {
+            /*if false {
                 var mainStickerPack: StickerPackReference?
                 var stickerPacks: [StickerPackReference] = []
                 if let message = contentContext as? Message {
@@ -137,13 +143,13 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                     stickerPacks = [.name(name)]
                 }
                 if let mainStickerPack = mainStickerPack, !stickerPacks.isEmpty {
-                    let controller = StickerPackScreen(context: context, mainStickerPack: mainStickerPack, stickerPacks: stickerPacks, parentNavigationController: navigationController, sendSticker: sendSticker)
+                    let controller = StickerPackScreen(context: context, updatedPresentationData: updatedPresentationData, mainStickerPack: mainStickerPack, stickerPacks: stickerPacks, parentNavigationController: navigationController, sendSticker: sendSticker)
                     present(controller, nil)
                 }
-            } else {
-                let controller = StickerPackScreen(context: context, mainStickerPack: .name(name), stickerPacks: [.name(name)], parentNavigationController: navigationController, sendSticker: sendSticker)
+            } else {*/
+                let controller = StickerPackScreen(context: context, updatedPresentationData: updatedPresentationData, mainStickerPack: .name(name), stickerPacks: [.name(name)], parentNavigationController: navigationController, sendSticker: sendSticker)
                 present(controller, nil)
-            }
+            //}
         case let .instantView(webpage, anchor):
             navigationController?.pushViewController(InstantPageController(context: context, webPage: webpage, sourcePeerType: .channel, anchor: anchor))
         case let .join(link):
@@ -176,12 +182,10 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                     }
                 })
                 if !found {
-                    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-                    present(textAlertController(context: context, title: nil, text: presentationData.strings.AuthCode_Alert(formattedConfirmationCode(code)).string, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
+                    present(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: presentationData.strings.AuthCode_Alert(formattedConfirmationCode(code)).string, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
                 }
             }
         case let .cancelAccountReset(phone, hash):
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
             let controller = OverlayStatusController(theme: presentationData.theme, type: .loading(cancelled: nil))
             present(controller, nil)
             let _ = (context.engine.auth.requestCancelAccountResetData(hash: hash)
@@ -198,8 +202,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                     case .generic:
                         text = presentationData.strings.Login_UnknownError
                 }
-                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-                present(textAlertController(context: context, title: nil, text: text, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
+                present(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: text, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
             })
             dismissInput()
         case let .share(url, text, to):
@@ -222,14 +225,8 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                 }
                 
                 if let textInputState = textInputState {
-                    let _ = (context.account.postbox.transaction({ transaction -> Void in
-                        transaction.updatePeerChatInterfaceState(peerId, update: { currentState in
-                            if let currentState = currentState as? ChatInterfaceState {
-                                return currentState.withUpdatedComposeInputState(textInputState)
-                            } else {
-                                return ChatInterfaceState().withUpdatedComposeInputState(textInputState)
-                            }
-                        })
+                    let _ = (ChatInterfaceState.update(engine: context.engine, peerId: peerId, threadId: nil, { currentState in
+                        return currentState.withUpdatedComposeInputState(textInputState)
                     })
                     |> deliverOnMainQueue).start(completed: {
                         navigationController?.pushViewController(ChatControllerImpl(context: context, chatLocation: .peer(peerId)))
@@ -265,7 +262,6 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                 if let url = url, !url.isEmpty {
                     let shareController = ShareController(context: context, subject: .url(url), presetText: text, externalShare: false, immediateExternalShare: false)
                     shareController.actionCompleted = {
-                        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
                         present(UndoOverlayController(presentationData: presentationData, content: .linkCopied(text: presentationData.strings.Conversation_LinkCopied), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return false }), nil)
                     }
                     present(shareController, nil)
@@ -285,7 +281,6 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                 }
             }
         case let .wallpaper(parameter):
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
             var controller: ViewController?
             
             let signal: Signal<TelegramWallpaper, GetWallpaperError>
@@ -305,7 +300,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                 case let .color(color):
                     signal = .single(.color(color.argb))
                 case let .gradient(colors, rotation):
-                    signal = .single(.gradient(nil, colors, WallpaperSettings(rotation: rotation)))
+                    signal = .single(.gradient(TelegramWallpaper.Gradient(id: nil, colors: colors, settings: WallpaperSettings(rotation: rotation))))
             }
             
             let _ = (signal
@@ -318,12 +313,11 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
             })
             dismissInput()
         case let .theme(slug):
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
             let signal = getTheme(account: context.account, slug: slug)
             |> mapToSignal { themeInfo -> Signal<(Data?, TelegramThemeSettings?, TelegramTheme), GetThemeError> in
                 return Signal<(Data?, TelegramThemeSettings?, TelegramTheme), GetThemeError> { subscriber in
                     let disposables = DisposableSet()
-                    if let settings = themeInfo.settings {
+                    if let settings = themeInfo.settings?.first {
                         subscriber.putNext((nil, settings, themeInfo))
                         subscriber.putCompletion()
                     } else if let resource = themeInfo.file?.resource {
@@ -394,7 +388,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                         navigationController?.pushViewController(previewController)
                     }
                 } else if let settings = dataAndTheme.1 {
-                    if let theme = makePresentationTheme(mediaBox: context.sharedContext.accountManager.mediaBox, themeReference: .builtin(PresentationBuiltinThemeReference(baseTheme: settings.baseTheme)), accentColor: UIColor(argb: settings.accentColor), backgroundColors: [], bubbleColors: settings.messageColors.flatMap { (UIColor(argb: $0.top), UIColor(argb: $0.bottom)) }, wallpaper: settings.wallpaper) {
+                    if let theme = makePresentationTheme(mediaBox: context.sharedContext.accountManager.mediaBox, themeReference: .builtin(PresentationBuiltinThemeReference(baseTheme: settings.baseTheme)), accentColor: UIColor(argb: settings.accentColor), backgroundColors: [], bubbleColors: settings.messageColors, wallpaper: settings.wallpaper) {
                         let previewController = ThemePreviewController(context: context, previewTheme: theme, source: .theme(dataAndTheme.2))
                         navigationController?.pushViewController(previewController)
                     }
@@ -407,7 +401,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                     case .unsupported:
                         errorText = presentationData.strings.Theme_Unsupported
                 }
-                present(textAlertController(context: context, title: nil, text: errorText, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
+                present(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: errorText, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
             }))
             dismissInput()
         #if ENABLE_WALLET
@@ -471,7 +465,7 @@ func openResolvedUrlImpl(_ resolvedUrl: ResolvedUrl, context: AccountContext, ur
                         return
                     }
                     navigationController.currentWindow?.present(VoiceChatJoinScreen(context: context, peerId: peerId, invite: invite, join: { [weak chatController] call in
-                        chatController?.joinGroupCall(peerId: peerId, invite: invite, activeCall: call)
+                        chatController?.joinGroupCall(peerId: peerId, invite: invite, activeCall: EngineGroupCallDescription(call))
                     }), on: .root, blockInteraction: false, completion: {})
                 }))
             }

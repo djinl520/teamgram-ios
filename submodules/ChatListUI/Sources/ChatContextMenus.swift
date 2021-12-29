@@ -29,7 +29,7 @@ func archiveContextMenuItems(context: AccountContext, groupId: PeerGroupId, chat
             })))
         }
         
-        let settings = transaction.getPreferencesEntry(key: ApplicationSpecificPreferencesKeys.chatArchiveSettings) as? ChatArchiveSettings ?? ChatArchiveSettings.default
+        let settings = transaction.getPreferencesEntry(key: ApplicationSpecificPreferencesKeys.chatArchiveSettings)?.get(ChatArchiveSettings.self) ?? ChatArchiveSettings.default
         let isPinned = !settings.isHiddenByDefault
         items.append(.action(ContextMenuActionItem(text: isPinned ? strings.ChatList_Context_HideArchive : strings.ChatList_Context_UnhideArchive, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: isPinned ? "Chat/Context Menu/Unpin": "Chat/Context Menu/Pin"), color: theme.contextMenu.primaryColor) }, action: { [weak chatListController] _, f in
             chatListController?.toggleArchivedFolderHiddenByDefault()
@@ -167,7 +167,7 @@ func chatContextMenuItems(context: AccountContext, peerId: PeerId, promoInfo: Ch
                             }
                             |> deliverOnMainQueue).start(completed: {
                                 c.dismiss(completion: {
-                                    chatListController?.present(UndoOverlayController(presentationData: presentationData, content: .chatRemovedFromFolder(chatTitle: peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), folderTitle: currentFilter.title), elevatedLayout: false, animateInAsReplacement: true, action: { _ in
+                                    chatListController?.present(UndoOverlayController(presentationData: presentationData, content: .chatRemovedFromFolder(chatTitle: EnginePeer(peer).displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), folderTitle: currentFilter.title), elevatedLayout: false, animateInAsReplacement: true, action: { _ in
                                         return false
                                     }), in: .current)
                                 })
@@ -239,7 +239,7 @@ func chatContextMenuItems(context: AccountContext, peerId: PeerId, promoInfo: Ch
                                                 return filters
                                             }).start()
 
-                                            chatListController?.present(UndoOverlayController(presentationData: presentationData, content: .chatAddedToFolder(chatTitle: peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), folderTitle: filter.title), elevatedLayout: false, animateInAsReplacement: true, action: { _ in
+                                            chatListController?.present(UndoOverlayController(presentationData: presentationData, content: .chatAddedToFolder(chatTitle: EnginePeer(peer).displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), folderTitle: filter.title), elevatedLayout: false, animateInAsReplacement: true, action: { _ in
                                                 return false
                                             }), in: .current)
                                         })
@@ -250,10 +250,10 @@ func chatContextMenuItems(context: AccountContext, peerId: PeerId, promoInfo: Ch
                                 updatedItems.append(.action(ContextMenuActionItem(text: strings.ChatList_Context_Back, icon: { theme in
                                     return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.contextMenu.primaryColor)
                                 }, action: { c, _ in
-                                    c.setItems(chatContextMenuItems(context: context, peerId: peerId, promoInfo: promoInfo, source: source, chatListController: chatListController, joined: joined))
+                                    c.setItems(chatContextMenuItems(context: context, peerId: peerId, promoInfo: promoInfo, source: source, chatListController: chatListController, joined: joined) |> map { ContextController.Items(items: $0) }, minHeight: nil)
                                 })))
 
-                                c.setItems(.single(updatedItems))
+                                c.setItems(.single(ContextController.Items(items: updatedItems)), minHeight: nil)
                             })))
                         }
                     }
@@ -271,8 +271,8 @@ func chatContextMenuItems(context: AccountContext, peerId: PeerId, promoInfo: Ch
                     })))
                 }
 
-                let archiveEnabled = !isSavedMessages && peerId != PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt32Value(777000)) && peerId == context.account.peerId
-                if let (group, index) = groupAndIndex {
+                let archiveEnabled = !isSavedMessages && peerId != PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(777000)) && peerId == context.account.peerId
+                if let (group, _) = groupAndIndex {
                     if archiveEnabled {
                         let isArchived = group == Namespaces.PeerGroup.archive
                         items.append(.action(ContextMenuActionItem(text: isArchived ? strings.ChatList_Context_Unarchive : strings.ChatList_Context_Archive, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: isArchived ? "Chat/Context Menu/Unarchive" : "Chat/Context Menu/Archive"), color: theme.contextMenu.primaryColor) }, action: { _, f in
@@ -328,8 +328,14 @@ func chatContextMenuItems(context: AccountContext, peerId: PeerId, promoInfo: Ch
                     }
                 } else {
                     if case .search = source {
-                        if let _ = peer as? TelegramChannel {
-                            items.append(.action(ContextMenuActionItem(text: strings.ChatList_Context_JoinChannel, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Add"), color: theme.contextMenu.primaryColor) }, action: { _, f in
+                        if let peer = peer as? TelegramChannel {
+                            let text: String
+                            if case .broadcast = peer.info {
+                                text = strings.ChatList_Context_JoinChannel
+                            } else {
+                                text = strings.ChatList_Context_JoinChat
+                            }
+                            items.append(.action(ContextMenuActionItem(text: text, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Add"), color: theme.contextMenu.primaryColor) }, action: { _, f in
                                 var createSignal = context.peerChannelMemberCategoriesContextsManager.join(engine: context.engine, peerId: peerId, hash: nil)
                                 var cancelImpl: (() -> Void)?
                                 let progressSignal = Signal<Never, NoError> { subscriber in
@@ -361,13 +367,14 @@ func chatContextMenuItems(context: AccountContext, peerId: PeerId, promoInfo: Ch
 
                                 joinChannelDisposable.set((createSignal
                                 |> deliverOnMainQueue).start(next: { _ in
-                                    if let navigationController = (chatListController?.navigationController as? NavigationController) {
-                                        context.sharedContext.navigateToChatController(NavigateToChatControllerParams(navigationController: navigationController, context: context, chatLocation: .peer(peerId)))
-                                    }
                                 }, error: { _ in
                                     if let chatListController = chatListController {
                                         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
                                         chatListController.present(textAlertController(context: context, title: nil, text: presentationData.strings.Login_UnknownError, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+                                    }
+                                }, completed: {
+                                    if let navigationController = (chatListController?.navigationController as? NavigationController) {
+                                        context.sharedContext.navigateToChatController(NavigateToChatControllerParams(navigationController: navigationController, context: context, chatLocation: .peer(peerId)))
                                     }
                                 }))
                                 f(.default)

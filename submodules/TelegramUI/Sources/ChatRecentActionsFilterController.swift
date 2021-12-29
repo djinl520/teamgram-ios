@@ -36,32 +36,6 @@ private enum ChatRecentActionsFilterSection: Int32 {
 private enum ChatRecentActionsFilterEntryStableId: Hashable {
     case index(Int32)
     case peer(PeerId)
-    
-    var hashValue: Int {
-        switch self {
-            case let .index(index):
-                return index.hashValue
-            case let .peer(peerId):
-                return peerId.hashValue
-        }
-    }
-    
-    static func ==(lhs: ChatRecentActionsFilterEntryStableId, rhs: ChatRecentActionsFilterEntryStableId) -> Bool {
-        switch lhs {
-            case let .index(index):
-                if case .index(index) = rhs {
-                    return true
-                } else {
-                    return false
-                }
-            case let .peer(peerId):
-                if case .peer(peerId) = rhs {
-                    return true
-                } else {
-                    return false
-                }
-        }
-    }
 }
 
 private enum ChatRecentActionsFilterEntry: ItemListNodeEntry {
@@ -232,7 +206,7 @@ private enum ChatRecentActionsFilterEntry: ItemListNodeEntry {
                     case .member:
                         peerText = strings.ChatAdmins_AdminLabel.capitalized
                 }
-                return ItemListPeerItem(presentationData: presentationData, dateTimeFormat: dateTimeFormat, nameDisplayOrder: nameDisplayOrder, context: arguments.context, peer: participant.peer, presence: nil, text: .text(peerText, .secondary), label: .none, editing: ItemListPeerItemEditing(editable: false, editing: false, revealed: false), switchValue: ItemListPeerItemSwitch(value: checked, style: .check), enabled: true, selectable: true, sectionId: self.section, action: {
+                return ItemListPeerItem(presentationData: presentationData, dateTimeFormat: dateTimeFormat, nameDisplayOrder: nameDisplayOrder, context: arguments.context, peer: EnginePeer(participant.peer), presence: nil, text: .text(peerText, .secondary), label: .none, editing: ItemListPeerItemEditing(editable: false, editing: false, revealed: false), switchValue: ItemListPeerItemSwitch(value: checked, style: .check), enabled: true, selectable: true, sectionId: self.section, action: {
                     arguments.toggleAdmin(participant.peer.id)
                 }, setPeerIdWithRevealedOptions: { _, _ in
                 }, removePeer: { _ in })
@@ -303,9 +277,10 @@ private func channelRecentActionsFilterControllerEntries(presentationData: Prese
             ([.invites], presentationData.strings.Channel_AdminLogFilter_EventsInviteLinks),
             ([.deleteMessages], presentationData.strings.Channel_AdminLogFilter_EventsDeletedMessages),
             ([.editMessages], presentationData.strings.Channel_AdminLogFilter_EventsEditedMessages),
+            ([.sendMessages], presentationData.strings.Channel_AdminLogFilter_EventsSentMessages),
             ([.pinnedMessages], presentationData.strings.Channel_AdminLogFilter_EventsPinned),
             ([.leave], presentationData.strings.Channel_AdminLogFilter_EventsLeaving),
-            ([.calls], presentationData.strings.Channel_AdminLogFilter_EventsCalls)
+            ([.calls], presentationData.strings.Channel_AdminLogFilter_EventsLiveStreams)
         ]
     }
     
@@ -369,7 +344,7 @@ private func channelRecentActionsFilterControllerEntries(presentationData: Prese
     return entries
 }
 
-public func channelRecentActionsFilterController(context: AccountContext, peer: Peer, events: AdminLogEventsFlags, adminPeerIds: [PeerId]?, apply: @escaping (_ events: AdminLogEventsFlags, _ adminPeerIds: [PeerId]?) -> Void) -> ViewController {
+public func channelRecentActionsFilterController(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, peer: Peer, events: AdminLogEventsFlags, adminPeerIds: [PeerId]?, apply: @escaping (_ events: AdminLogEventsFlags, _ adminPeerIds: [PeerId]?) -> Void) -> ViewController {
     let statePromise = ValuePromise(ChatRecentActionsFilterControllerState(events: events, adminPeerIds: adminPeerIds), ignoreRepeated: true)
     let stateValue = Atomic(value: ChatRecentActionsFilterControllerState(events: events, adminPeerIds: adminPeerIds))
     let updateState: ((ChatRecentActionsFilterControllerState) -> ChatRecentActionsFilterControllerState) -> Void = { f in
@@ -379,9 +354,7 @@ public func channelRecentActionsFilterController(context: AccountContext, peer: 
     var dismissImpl: (() -> Void)?
     
     let adminsPromise = Promise<[RenderedChannelParticipant]?>(nil)
-    
-    let presentationDataSignal = context.sharedContext.presentationData
-    
+        
     let actionsDisposable = DisposableSet()
     
     let arguments = ChatRecentActionsFilterControllerArguments(context: context, toggleAllActions: { value in
@@ -459,7 +432,8 @@ public func channelRecentActionsFilterController(context: AccountContext, peer: 
     
     var previousPeers: [RenderedChannelParticipant]?
     
-    let signal = combineLatest(presentationDataSignal, statePromise.get(), adminsPromise.get() |> deliverOnMainQueue)
+    let presentationData = updatedPresentationData?.signal ?? context.sharedContext.presentationData
+    let signal = combineLatest(presentationData, statePromise.get(), adminsPromise.get() |> deliverOnMainQueue)
     |> deliverOnMainQueue
     |> map { presentationData, state, admins -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let leftNavigationButton = ItemListNavigationButton(content: .text(presentationData.strings.Common_Cancel), style: .regular, enabled: true, action: {

@@ -8,6 +8,23 @@ import GZip
 import YuvConversion
 import MediaResources
 
+public extension EmojiFitzModifier {
+    var lottieFitzModifier: LottieFitzModifier {
+        switch self {
+        case .type12:
+            return .type12
+        case .type3:
+            return .type3
+        case .type4:
+            return .type4
+        case .type5:
+            return .type5
+        case .type6:
+            return .type6
+        }
+    }
+}
+
 private let sharedQueue = Queue()
 private let sharedStoreQueue = Queue.concurrentDefaultQueue()
 
@@ -81,6 +98,7 @@ public final class AnimatedStickerFrame {
         self.type = type
         self.width = width
         self.height = height
+        assert(bytesPerRow > 0)
         self.bytesPerRow = bytesPerRow
         self.index = index
         self.isLastFrame = isLastFrame
@@ -88,7 +106,7 @@ public final class AnimatedStickerFrame {
     }
 }
 
-public protocol AnimatedStickerFrameSource: class {
+public protocol AnimatedStickerFrameSource: AnyObject {
     var frameRate: Int { get }
     var frameCount: Int { get }
     var frameIndex: Int { get }
@@ -139,7 +157,10 @@ public final class AnimatedStickerCachedFrameSource: AnimatedStickerFrameSource 
         var frameRate = 0
         var frameCount = 0
         
-        if !self.data.withUnsafeBytes({ (bytes: UnsafePointer<UInt8>) -> Bool in
+        if !self.data.withUnsafeBytes({ buffer -> Bool in
+            guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return false
+            }
             var frameRateValue: Int32 = 0
             var frameCountValue: Int32 = 0
             var widthValue: Int32 = 0
@@ -180,7 +201,10 @@ public final class AnimatedStickerCachedFrameSource: AnimatedStickerFrameSource 
         self.decodeBuffer = Data(count: self.bytesPerRow * height)
         self.frameBuffer = Data(count: self.bytesPerRow * height)
         let frameBufferLength = self.frameBuffer.count
-        self.frameBuffer.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<UInt8>) -> Void in
+        self.frameBuffer.withUnsafeMutableBytes { buffer -> Void in
+            guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return
+            }
             memset(bytes, 0, frameBufferLength)
         }
     }
@@ -199,12 +223,19 @@ public final class AnimatedStickerCachedFrameSource: AnimatedStickerFrameSource 
         
         let frameIndex = self.frameIndex
         
-        self.data.withUnsafeBytes { (bytes: UnsafePointer<UInt8>) -> Void in
+        self.data.withUnsafeBytes { buffer -> Void in
+            guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return
+            }
+
             if self.offset + 4 > dataLength {
                 if self.dataComplete {
                     self.frameIndex = 0
                     self.offset = self.initialOffset
-                    self.frameBuffer.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<UInt8>) -> Void in
+                    self.frameBuffer.withUnsafeMutableBytes { buffer -> Void in
+                        guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                            return
+                        }
                         memset(bytes, 0, frameBufferLength)
                     }
                 }
@@ -221,9 +252,21 @@ public final class AnimatedStickerCachedFrameSource: AnimatedStickerFrameSource 
             self.offset += 4
             
             if draw {
-                self.scratchBuffer.withUnsafeMutableBytes { (scratchBytes: UnsafeMutablePointer<UInt8>) -> Void in
-                    self.decodeBuffer.withUnsafeMutableBytes { (decodeBytes: UnsafeMutablePointer<UInt8>) -> Void in
-                        self.frameBuffer.withUnsafeMutableBytes { (frameBytes: UnsafeMutablePointer<UInt8>) -> Void in
+                self.scratchBuffer.withUnsafeMutableBytes { scratchBuffer -> Void in
+                    guard let scratchBytes = scratchBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                        return
+                    }
+
+                    self.decodeBuffer.withUnsafeMutableBytes { decodeBuffer -> Void in
+                        guard let decodeBytes = decodeBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                            return
+                        }
+
+                        self.frameBuffer.withUnsafeMutableBytes { frameBuffer -> Void in
+                            guard let frameBytes = frameBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                                return
+                            }
+
                             compression_decode_buffer(decodeBytes, decodeBufferLength, bytes.advanced(by: self.offset), Int(frameLength), UnsafeMutableRawPointer(scratchBytes), COMPRESSION_LZFSE)
                             
                             var lhs = UnsafeMutableRawPointer(frameBytes).assumingMemoryBound(to: UInt64.self)
@@ -253,7 +296,10 @@ public final class AnimatedStickerCachedFrameSource: AnimatedStickerFrameSource 
                 isLastFrame = true
                 self.frameIndex = 0
                 self.offset = self.initialOffset
-                self.frameBuffer.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<UInt8>) -> Void in
+                self.frameBuffer.withUnsafeMutableBytes { buffer -> Void in
+                    guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                        return
+                    }
                     memset(bytes, 0, frameBufferLength)
                 }
             }
@@ -351,7 +397,10 @@ private final class ManagedFileImpl {
             assert(queue.isCurrent())
         }
         var result = Data(count: count)
-        result.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<Int8>) -> Void in
+        result.withUnsafeMutableBytes { buffer -> Void in
+            guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return
+            }
             let readCount = self.read(bytes, count)
             assert(readCount == count)
         }
@@ -399,7 +448,7 @@ private func compressFrame(width: Int, height: Int, rgbData: Data) -> Data? {
     assert(yuvaPixelsPerAlphaRow % 2 == 0)
     
     let yuvaLength = Int(width) * Int(height) * 2 + yuvaPixelsPerAlphaRow * Int(height) / 2
-    var yuvaFrameData = malloc(yuvaLength)!
+    let yuvaFrameData = malloc(yuvaLength)!
     defer {
         free(yuvaFrameData)
     }
@@ -422,7 +471,10 @@ private func compressFrame(width: Int, height: Int, rgbData: Data) -> Data? {
     
     var maybeResultSize: Int?
     
-    compressedFrameData.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<UInt8>) -> Void in
+    compressedFrameData.withUnsafeMutableBytes { buffer -> Void in
+        guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+            return
+        }
         let length = compression_encode_buffer(bytes, compressedFrameDataLength, yuvaFrameData.assumingMemoryBound(to: UInt8.self), yuvaLength, scratchData, COMPRESSION_LZFSE)
         maybeResultSize = length
     }
@@ -579,9 +631,21 @@ private final class AnimatedStickerDirectFrameSourceCache {
         
         let decodeBufferLength = self.decodeBuffer.count
         
-        compressedData.withUnsafeBytes { (bytes: UnsafePointer<UInt8>) -> Void in
-            self.scratchBuffer.withUnsafeMutableBytes { (scratchBytes: UnsafeMutablePointer<UInt8>) -> Void in
-                self.decodeBuffer.withUnsafeMutableBytes { (decodeBytes: UnsafeMutablePointer<UInt8>) -> Void in
+        compressedData.withUnsafeBytes { buffer -> Void in
+            guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return
+            }
+            
+            self.scratchBuffer.withUnsafeMutableBytes { scratchBuffer -> Void in
+                guard let scratchBytes = scratchBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                    return
+                }
+
+                self.decodeBuffer.withUnsafeMutableBytes { decodeBuffer -> Void in
+                    guard let decodeBytes = decodeBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                        return
+                    }
+
                     let resultLength = compression_decode_buffer(decodeBytes, decodeBufferLength, bytes, length, UnsafeMutableRawPointer(scratchBytes), COMPRESSION_LZFSE)
                     
                     frameData = Data(bytes: decodeBytes, count: resultLength)
@@ -619,7 +683,7 @@ private final class AnimatedStickerDirectFrameSource: AnimatedStickerFrameSource
         let rawData = TGGUnzipData(data, 8 * 1024 * 1024) ?? data
         let decompressedData = transformedWithFitzModifier(data: rawData, fitzModifier: fitzModifier)
         
-        guard let animation = LottieInstance(data: decompressedData, cacheKey: "") else {
+        guard let animation = LottieInstance(data: decompressedData, fitzModifier: fitzModifier?.lottieFitzModifier ?? .none, cacheKey: "") else {
             return nil
         }
         self.animation = animation
@@ -641,10 +705,14 @@ private final class AnimatedStickerDirectFrameSource: AnimatedStickerFrameSource
         self.currentFrame += 1
         if draw {
             if let cache = self.cache, let yuvData = cache.readUncompressedYuvFrame(index: frameIndex) {
-                return AnimatedStickerFrame(data: yuvData, type: .yuva, width: self.width, height: self.height, bytesPerRow: 0, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount)
+                return AnimatedStickerFrame(data: yuvData, type: .yuva, width: self.width, height: self.height, bytesPerRow: self.width * 2, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount)
             } else {
                 var frameData = Data(count: self.bytesPerRow * self.height)
-                frameData.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<UInt8>) -> Void in
+                frameData.withUnsafeMutableBytes { buffer -> Void in
+                    guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                        return
+                    }
+
                     memset(bytes, 0, self.bytesPerRow * self.height)
                     self.animation.renderFrame(with: Int32(frameIndex), into: bytes, width: Int32(self.width), height: Int32(self.height), bytesPerRow: Int32(self.bytesPerRow))
                 }
@@ -725,24 +793,6 @@ public protocol AnimatedStickerNodeSource {
     func directDataPath() -> Signal<String, NoError>
 }
 
-public final class AnimatedStickerNodeLocalFileSource: AnimatedStickerNodeSource {
-    public var fitzModifier: EmojiFitzModifier? = nil
-    
-    public let path: String
-    
-    public init(path: String) {
-        self.path = path
-    }
-    
-    public func directDataPath() -> Signal<String, NoError> {
-        return .single(self.path)
-    }
-    
-    public func cachedDataPath(width: Int, height: Int) -> Signal<(String, Bool), NoError> {
-        return .never()
-    }
-}
-
 public final class AnimatedStickerNode: ASDisplayNode {
     private let queue: Queue
     private let disposable = MetaDisposable()
@@ -798,6 +848,8 @@ public final class AnimatedStickerNode: ASDisplayNode {
         }
     }
     
+    public var isPlayingChanged: (Bool) -> Void = { _ in }
+    
     override public init() {
         self.queue = sharedQueue
         self.eventsNode = AnimatedStickerNodeDisplayEvents()
@@ -819,6 +871,7 @@ public final class AnimatedStickerNode: ASDisplayNode {
         self.timer.swap(nil)?.invalidate()
     }
     
+    private weak var nodeToCopyFrameFrom: AnimatedStickerNode?
     override public func didLoad() {
         super.didLoad()
         
@@ -829,7 +882,21 @@ public final class AnimatedStickerNode: ASDisplayNode {
         //self.renderer = MetalAnimationRenderer()
         #endif
         self.renderer?.frame = CGRect(origin: CGPoint(), size: self.bounds.size)
+        if let contents = self.nodeToCopyFrameFrom?.renderer?.contents {
+            self.renderer?.contents = contents
+        }
+        self.nodeToCopyFrameFrom = nil
         self.addSubnode(self.renderer!)
+    }
+    
+    public func cloneCurrentFrame(from otherNode: AnimatedStickerNode?) {
+        if let renderer = self.renderer {
+            if let contents = otherNode?.renderer?.contents {
+                renderer.contents = contents
+            }
+        } else {
+            self.nodeToCopyFrameFrom = otherNode
+        }
     }
 
     public func setup(source: AnimatedStickerNodeSource, width: Int, height: Int, playbackMode: AnimatedStickerPlaybackMode = .loop, mode: AnimatedStickerMode) {
@@ -853,7 +920,7 @@ public final class AnimatedStickerNode: ASDisplayNode {
                         strongSelf.isSetUpForPlayback = false
                         strongSelf.isPlaying = true
                     }
-                    var fromIndex = strongSelf.playFromIndex
+                    let fromIndex = strongSelf.playFromIndex
                     strongSelf.playFromIndex = nil
                     strongSelf.play(fromIndex: fromIndex)
                 } else if strongSelf.canDisplayFirstFrame {
@@ -912,6 +979,8 @@ public final class AnimatedStickerNode: ASDisplayNode {
             } else{
                 self.pause()
             }
+            
+            self.isPlayingChanged(isPlaying)
         }
         let canDisplayFirstFrame = self.automaticallyLoadFirstFrame && self.isDisplaying
         if self.canDisplayFirstFrame != canDisplayFirstFrame {
@@ -923,16 +992,18 @@ public final class AnimatedStickerNode: ASDisplayNode {
     }
     
     private var isSetUpForPlayback = false
-    
+        
     public func play(firstFrame: Bool = false, fromIndex: Int? = nil) {
-        switch self.playbackMode {
-        case .once:
-            self.isPlaying = true
-        case .count:
-            self.currentLoopCount = 0
-            self.isPlaying = true
-        default:
-            break
+        if !firstFrame {
+            switch self.playbackMode {
+            case .once:
+                self.isPlaying = true
+            case .count:
+                self.currentLoopCount = 0
+                self.isPlaying = true
+            default:
+                break
+            }
         }
         if self.isSetUpForPlayback {
             let directData = self.directData
@@ -941,7 +1012,7 @@ public final class AnimatedStickerNode: ASDisplayNode {
             let timerHolder = self.timer
             let frameSourceHolder = self.frameSource
             self.queue.async { [weak self] in
-                var maybeFrameSource: AnimatedStickerFrameSource? = frameSourceHolder.with { $0 }?.syncWith { $0 }?.value
+                var maybeFrameSource: AnimatedStickerFrameSource? = frameSourceHolder.with { $0 }?.syncWith { $0 }.value
                 if maybeFrameSource == nil {
                     let notifyUpdated: (() -> Void)? = nil
                     if let directData = directData {
@@ -974,10 +1045,10 @@ public final class AnimatedStickerNode: ASDisplayNode {
                 let frameRate = frameSource.frameRate
                 
                 let timer = SwiftSignalKit.Timer(timeout: 1.0 / Double(frameRate), repeat: !firstFrame, completion: {
-                    let maybeFrame = frameQueue.syncWith { frameQueue in
+                    let frame = frameQueue.syncWith { frameQueue in
                         return frameQueue.take(draw: true)
                     }
-                    if let maybeFrame = maybeFrame, let frame = maybeFrame {
+                    if let frame = frame {
                         Queue.mainQueue().async {
                             guard let strongSelf = self else {
                                 return
@@ -999,7 +1070,9 @@ public final class AnimatedStickerNode: ASDisplayNode {
                             if frame.isLastFrame {
                                 var stopped = false
                                 var stopNow = false
-                                if case .once = strongSelf.playbackMode {
+                                if case .still = strongSelf.playbackMode {
+                                    stopNow = true
+                                } else if case .once = strongSelf.playbackMode {
                                     stopNow = true
                                 } else if case let .count(count) = strongSelf.playbackMode {
                                     strongSelf.currentLoopCount += 1
@@ -1071,14 +1144,16 @@ public final class AnimatedStickerNode: ASDisplayNode {
                 let frameRate = frameSource.frameRate
                 
                 let timer = SwiftSignalKit.Timer(timeout: 1.0 / Double(frameRate), repeat: !firstFrame, completion: {
-                    let maybeFrame = frameQueue.syncWith { frameQueue in
+                    let frame = frameQueue.syncWith { frameQueue in
                         return frameQueue.take(draw: true)
                     }
-                    if let maybeFrame = maybeFrame, let frame = maybeFrame {
+                    if let frame = frame {
                         Queue.mainQueue().async {
                             guard let strongSelf = self else {
                                 return
                             }
+
+                            assert(frame.bytesPerRow != 0)
                             
                             strongSelf.renderer?.render(queue: strongSelf.queue, width: frame.width, height: frame.height, bytesPerRow: frame.bytesPerRow, data: frame.data, type: frame.type, completion: {
                                 guard let strongSelf = self else {
@@ -1096,7 +1171,9 @@ public final class AnimatedStickerNode: ASDisplayNode {
                             if frame.isLastFrame {
                                 var stopped = false
                                 var stopNow = false
-                                if case .once = strongSelf.playbackMode {
+                                if case .still = strongSelf.playbackMode {
+                                    stopNow = true
+                                } else if case .once = strongSelf.playbackMode {
                                     stopNow = true
                                 } else if case let .count(count) = strongSelf.playbackMode {
                                     strongSelf.currentLoopCount += 1
@@ -1151,7 +1228,7 @@ public final class AnimatedStickerNode: ASDisplayNode {
         let frameSourceHolder = self.frameSource
         let timerHolder = self.timer
         self.queue.async { [weak self] in
-            var maybeFrameSource: AnimatedStickerFrameSource? = frameSourceHolder.with { $0 }?.syncWith { $0 }?.value
+            var maybeFrameSource: AnimatedStickerFrameSource? = frameSourceHolder.with { $0 }?.syncWith { $0 }.value
             if case .timestamp = position {
             } else {
                 if let directData = directData {

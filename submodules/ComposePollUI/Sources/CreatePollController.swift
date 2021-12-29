@@ -2,7 +2,6 @@ import Foundation
 import UIKit
 import Display
 import SwiftSignalKit
-import Postbox
 import TelegramCore
 import TelegramPresentationData
 import ItemListUI
@@ -260,8 +259,8 @@ private enum CreatePollEntry: ItemListNodeEntry {
         switch self {
         case .text:
             return CreatePollEntryTag.text
-        case let .option(option):
-            return CreatePollEntryTag.option(option.id)
+        case let .option(id, _, _, _, _, _, _, _, _):
+            return CreatePollEntryTag.option(id)
         default:
             break
         }
@@ -276,8 +275,8 @@ private enum CreatePollEntry: ItemListNodeEntry {
             return .text
         case .optionsHeader:
             return .optionsHeader
-        case let .option(option):
-            return .option(option.id)
+        case let .option(id, _, _, _, _, _, _, _, _):
+            return .option(id)
         case .optionsInfo:
             return .optionsInfo
         case .anonymousVotes:
@@ -305,7 +304,7 @@ private enum CreatePollEntry: ItemListNodeEntry {
             return 1
         case .optionsHeader:
             return 2
-        case let .option(option):
+        case .option:
             return 3
         case .optionsInfo:
             return 1001
@@ -328,10 +327,10 @@ private enum CreatePollEntry: ItemListNodeEntry {
     
     static func <(lhs: CreatePollEntry, rhs: CreatePollEntry) -> Bool {
         switch lhs {
-        case let .option(lhsOption):
+        case let .option(_, lhsOrdering, _, _, _, _, _, _, _):
             switch rhs {
-            case let .option(rhsOption):
-                return lhsOption.ordering < rhsOption.ordering
+            case let .option(_, rhsOrdering, _, _, _, _, _, _, _):
+                return lhsOrdering < rhsOrdering
             default:
                 break
             }
@@ -423,7 +422,7 @@ private struct CreatePollControllerState: Equatable {
     var isEditingSolution: Bool = false
 }
 
-private func createPollControllerEntries(presentationData: PresentationData, peer: Peer, state: CreatePollControllerState, limitsConfiguration: LimitsConfiguration, defaultIsQuiz: Bool?) -> [CreatePollEntry] {
+private func createPollControllerEntries(presentationData: PresentationData, peer: EnginePeer, state: CreatePollControllerState, limitsConfiguration: EngineConfiguration.Limits, defaultIsQuiz: Bool?) -> [CreatePollEntry] {
     var entries: [CreatePollEntry] = []
     
     var textLimitText = ItemListSectionHeaderAccessoryText(value: "", color: .generic)
@@ -453,7 +452,7 @@ private func createPollControllerEntries(presentationData: PresentationData, pee
     }
     
     var canBePublic = true
-    if let channel = peer as? TelegramChannel, case .broadcast = channel.info {
+    if case let .channel(channel) = peer, case .broadcast = channel.info {
         canBePublic = false
     }
     
@@ -483,7 +482,36 @@ private func createPollControllerEntries(presentationData: PresentationData, pee
     return entries
 }
 
-public func createPollController(context: AccountContext, peer: Peer, isQuiz: Bool? = nil, completion: @escaping (EnqueueMessage) -> Void) -> ViewController {
+public final class ComposedPoll {
+    public let publicity: TelegramMediaPollPublicity
+    public let kind: TelegramMediaPollKind
+
+    public let text: String
+    public let options: [TelegramMediaPollOption]
+    public let correctAnswers: [Data]?
+    public let results: TelegramMediaPollResults
+    public let deadlineTimeout: Int32?
+
+    public init(
+        publicity: TelegramMediaPollPublicity,
+        kind: TelegramMediaPollKind,
+        text: String,
+        options: [TelegramMediaPollOption],
+        correctAnswers: [Data]?,
+        results: TelegramMediaPollResults,
+        deadlineTimeout: Int32?
+    ) {
+        self.publicity = publicity
+        self.kind = kind
+        self.text = text
+        self.options = options
+        self.correctAnswers = correctAnswers
+        self.results = results
+        self.deadlineTimeout = deadlineTimeout
+    }
+}
+
+public func createPollController(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, peer: EnginePeer, isQuiz: Bool? = nil, completion: @escaping (ComposedPoll) -> Void) -> ViewController {
     var initialState = CreatePollControllerState()
     if let isQuiz = isQuiz {
         initialState.isQuiz = isQuiz
@@ -697,7 +725,7 @@ public func createPollController(context: AccountContext, peer: Peer, isQuiz: Bo
         }
     }, displayMultipleChoiceDisabled: {
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-        presentControllerImpl?(textAlertController(context: context, title: nil, text: presentationData.strings.CreatePoll_MultipleChoiceQuizAlert, actions: [TextAlertAction(type: .genericAction, title: presentationData.strings.Common_OK, action: {})]), nil)
+        presentControllerImpl?(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: presentationData.strings.CreatePoll_MultipleChoiceQuizAlert, actions: [TextAlertAction(type: .genericAction, title: presentationData.strings.Common_OK, action: {})]), nil)
     }, updateQuiz: { value in
         if !value {
             displayQuizTooltipImpl?(value)
@@ -742,12 +770,14 @@ public func createPollController(context: AccountContext, peer: Peer, isQuiz: Bo
     })
     
     let previousOptionIds = Atomic<[Int]?>(value: nil)
-    
-    let limitsKey = PostboxViewKey.preferences(keys: Set([PreferencesKeys.limitsConfiguration]))
-    let signal = combineLatest(context.sharedContext.presentationData, statePromise.get() |> deliverOnMainQueue, context.account.postbox.combinedView(keys: [limitsKey]))
-    |> map { presentationData, state, combinedView -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        let limitsConfiguration: LimitsConfiguration = (combinedView.views[limitsKey] as? PreferencesView)?.values[PreferencesKeys.limitsConfiguration] as? LimitsConfiguration ?? LimitsConfiguration.defaultValue
-        
+
+    let presentationData = updatedPresentationData?.signal ?? context.sharedContext.presentationData
+    let signal = combineLatest(queue: .mainQueue(),
+        presentationData,
+        statePromise.get(),
+        context.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.Limits())
+    )
+    |> map { presentationData, state, limitsConfiguration -> (ItemListControllerState, (ItemListNodeState, Any)) in
         var enabled = true
         if processPollText(state.text).isEmpty {
             enabled = false
@@ -817,14 +847,19 @@ public func createPollController(context: AccountContext, peer: Peer, isQuiz: Bo
                 kind = .poll(multipleAnswers: state.isMultipleChoice)
             }
             
-            var deadlineTimeout: Int32?
-            #if DEBUG
-            deadlineTimeout = 65
-            #endif
+            let deadlineTimeout: Int32? = nil
             
             dismissImpl?()
             
-            completion(.message(text: "", attributes: [], mediaReference: .standalone(media: TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.LocalPoll, id: Int64.random(in: Int64.min ... Int64.max)), publicity: publicity, kind: kind, text: processPollText(state.text), options: options, correctAnswers: correctAnswers, results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: resolvedSolution), isClosed: false, deadlineTimeout: deadlineTimeout)), replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
+            completion(ComposedPoll(
+                publicity: publicity,
+                kind: kind,
+                text: processPollText(state.text),
+                options: options,
+                correctAnswers: correctAnswers,
+                results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: resolvedSolution),
+                deadlineTimeout: deadlineTimeout
+            ))
         })
         
         let leftNavigationButton = ItemListNavigationButton(content: .text(presentationData.strings.Common_Cancel), style: .regular, enabled: true, action: {
@@ -992,17 +1027,16 @@ public func createPollController(context: AccountContext, peer: Peer, isQuiz: Bo
     }
     controller.setReorderEntry({ (fromIndex: Int, toIndex: Int, entries: [CreatePollEntry]) -> Signal<Bool, NoError> in
         let fromEntry = entries[fromIndex]
-        guard case let .option(option) = fromEntry else {
+        guard case let .option(id, _, _, _, _, _, _, _, _) = fromEntry else {
             return .single(false)
         }
-        let id = option.id
         var referenceId: Int?
         var beforeAll = false
         var afterAll = false
         if toIndex < entries.count {
             switch entries[toIndex] {
-                case let .option(toOption):
-                    referenceId = toOption.id
+                case let .option(toId, _, _, _, _, _, _, _, _):
+                    referenceId = toId
                 default:
                     if entries[toIndex] < fromEntry {
                         beforeAll = true
@@ -1095,7 +1129,7 @@ public func createPollController(context: AccountContext, peer: Peer, isQuiz: Bo
         }
         if hasNonEmptyOptions || !state.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-            presentControllerImpl?(textAlertController(context: context, title: nil, text: presentationData.strings.CreatePoll_CancelConfirmation, actions: [TextAlertAction(type: .genericAction, title: presentationData.strings.Common_No, action: {}), TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_Yes, action: {
+            presentControllerImpl?(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: presentationData.strings.CreatePoll_CancelConfirmation, actions: [TextAlertAction(type: .genericAction, title: presentationData.strings.Common_No, action: {}), TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_Yes, action: {
                 dismissImpl?()
             })]), nil)
             return false

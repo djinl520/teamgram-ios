@@ -80,7 +80,7 @@ public enum GetCurrentGroupCallError {
 }
 
 func _internal_getCurrentGroupCall(account: Account, callId: Int64, accessHash: Int64, peerId: PeerId? = nil) -> Signal<GroupCallSummary?, GetCurrentGroupCallError> {
-    return account.network.request(Api.functions.phone.getGroupCall(call: .inputGroupCall(id: callId, accessHash: accessHash)))
+    return account.network.request(Api.functions.phone.getGroupCall(call: .inputGroupCall(id: callId, accessHash: accessHash), limit: 4))
     |> mapError { _ -> GetCurrentGroupCallError in
         return .generic
     }
@@ -1194,6 +1194,7 @@ public final class GroupCallParticipantsContext {
     }
     
     private let account: Account
+    private let peerId: PeerId
     public let myPeerId: PeerId
     public let id: Int64
     public let accessHash: Int64
@@ -1286,7 +1287,8 @@ public final class GroupCallParticipantsContext {
     private let updateDefaultMuteDisposable = MetaDisposable()
     private let resetInviteLinksDisposable = MetaDisposable()
     private let updateShouldBeRecordingDisposable = MetaDisposable()
-
+    private let subscribeDisposable = MetaDisposable()
+    
     private var localVideoIsMuted: Bool? = nil
     private var localIsVideoPaused: Bool? = nil
     private var localIsPresentationPaused: Bool? = nil
@@ -1298,6 +1300,7 @@ public final class GroupCallParticipantsContext {
     
     init(account: Account, peerId: PeerId, myPeerId: PeerId, id: Int64, accessHash: Int64, state: State, previousServiceState: ServiceState?) {
         self.account = account
+        self.peerId = peerId
         self.myPeerId = myPeerId
         self.id = id
         self.accessHash = accessHash
@@ -1423,7 +1426,8 @@ public final class GroupCallParticipantsContext {
         self.updateDefaultMuteDisposable.dispose()
         self.updateShouldBeRecordingDisposable.dispose()
         self.activityRankResetTimer?.invalidate()
-        resetInviteLinksDisposable.dispose()
+        self.resetInviteLinksDisposable.dispose()
+        self.subscribeDisposable.dispose()
     }
     
     public func addUpdates(updates: [Update]) {
@@ -1981,7 +1985,7 @@ public final class GroupCallParticipantsContext {
         self.updateMuteState(peerId: self.myPeerId, muteState: nil, volume: nil, raiseHand: false)
     }
     
-    public func updateShouldBeRecording(_ shouldBeRecording: Bool, title: String?) {
+    public func updateShouldBeRecording(_ shouldBeRecording: Bool, title: String?, videoOrientation: Bool?) {
         var flags: Int32 = 0
         if shouldBeRecording {
             flags |= 1 << 0
@@ -1989,7 +1993,13 @@ public final class GroupCallParticipantsContext {
         if let title = title, !title.isEmpty {
             flags |= (1 << 1)
         }
-        self.updateShouldBeRecordingDisposable.set((self.account.network.request(Api.functions.phone.toggleGroupCallRecord(flags: flags, call: .inputGroupCall(id: self.id, accessHash: self.accessHash), title: title))
+        var videoPortrait: Api.Bool?
+        if let videoOrientation = videoOrientation {
+            flags |= (1 << 2)
+            videoPortrait = videoOrientation ? .boolTrue : .boolFalse
+        }
+
+        self.updateShouldBeRecordingDisposable.set((self.account.network.request(Api.functions.phone.toggleGroupCallRecord(flags: flags, call: .inputGroupCall(id: self.id, accessHash: self.accessHash), title: title, videoPortrait: videoPortrait))
         |> deliverOnMainQueue).start(next: { [weak self] updates in
             guard let strongSelf = self else {
                 return
@@ -2021,6 +2031,15 @@ public final class GroupCallParticipantsContext {
             }
             strongSelf.account.stateManager.addUpdates(updates)
         }))
+    }
+    
+    public func toggleScheduledSubscription(_ subscribe: Bool) {
+        if subscribe == self.stateValue.state.subscribedToScheduled {
+            return
+        }
+        self.stateValue.state.subscribedToScheduled = subscribe
+        
+        self.subscribeDisposable.set(_internal_toggleScheduledGroupCallSubscription(account: self.account, peerId: self.peerId, callId: self.id, accessHash: self.accessHash, subscribe: subscribe).start())
     }
     
     public func loadMore(token: String) {
@@ -2233,7 +2252,7 @@ func _internal_groupCallDisplayAsAvailablePeers(network: Network, postbox: Postb
                 for chat in chats {
                     if let groupOrChannel = parseTelegramGroupOrChannel(chat: chat) {
                         switch chat {
-                        case let .channel(_, _, _, _, _, _, _, _, _, _, _, _, participantsCount):
+                        case let .channel(_, _, _, _, _, _, _, _, _, _, _, participantsCount):
                             if let participantsCount = participantsCount {
                                 subscribers[groupOrChannel.id] = participantsCount
                             }
@@ -2258,7 +2277,7 @@ func _internal_groupCallDisplayAsAvailablePeers(network: Network, postbox: Postb
     }
 }
 
-public final class CachedDisplayAsPeers: PostboxCoding {
+public final class CachedDisplayAsPeers: Codable {
     public let peerIds: [PeerId]
     public let timestamp: Int32
     
@@ -2267,14 +2286,18 @@ public final class CachedDisplayAsPeers: PostboxCoding {
         self.timestamp = timestamp
     }
     
-    public init(decoder: PostboxDecoder) {
-        self.peerIds = decoder.decodeInt64ArrayForKey("peerIds").map { PeerId($0) }
-        self.timestamp = decoder.decodeInt32ForKey("timestamp", orElse: 0)
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StringCodingKey.self)
+
+        self.peerIds = (try container.decode([Int64].self, forKey: "peerIds")).map(PeerId.init)
+        self.timestamp = try container.decode(Int32.self, forKey: "timestamp")
     }
     
-    public func encode(_ encoder: PostboxEncoder) {
-        encoder.encodeInt64Array(self.peerIds.map { $0.toInt64() }, forKey: "peerIds")
-        encoder.encodeInt32(self.timestamp, forKey: "timestamp")
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StringCodingKey.self)
+
+        try container.encode(self.peerIds.map { $0.toInt64() }, forKey: "peerIds")
+        try container.encode(self.timestamp, forKey: "timestamp")
     }
 }
 
@@ -2291,7 +2314,7 @@ func _internal_cachedGroupCallDisplayAsAvailablePeers(account: Account, peerId: 
     let key = ValueBoxKey(length: 8)
     key.setInt64(0, value: peerId.toInt64())
     return account.postbox.transaction { transaction -> ([FoundPeer], Int32)? in
-        let cached = transaction.retrieveItemCacheEntry(id: ItemCacheEntryId(collectionId: Namespaces.CachedItemCollection.cachedGroupCallDisplayAsPeers, key: key)) as? CachedDisplayAsPeers
+        let cached = transaction.retrieveItemCacheEntry(id: ItemCacheEntryId(collectionId: Namespaces.CachedItemCollection.cachedGroupCallDisplayAsPeers, key: key))?.get(CachedDisplayAsPeers.self)
         if let cached = cached {
             var peers: [FoundPeer] = []
             for peerId in cached.peerIds {
@@ -2317,7 +2340,9 @@ func _internal_cachedGroupCallDisplayAsAvailablePeers(account: Account, peerId: 
             |> mapToSignal { peers -> Signal<[FoundPeer], NoError> in
                 return account.postbox.transaction { transaction -> [FoundPeer] in
                     let currentTimestamp = Int32(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970)
-                    transaction.putItemCacheEntry(id: ItemCacheEntryId(collectionId: Namespaces.CachedItemCollection.cachedGroupCallDisplayAsPeers, key: key), entry: CachedDisplayAsPeers(peerIds: peers.map { $0.peer.id }, timestamp: currentTimestamp), collectionSpec: ItemCacheCollectionSpec(lowWaterItemCount: 10, highWaterItemCount: 20))
+                    if let entry = CodableEntry(CachedDisplayAsPeers(peerIds: peers.map { $0.peer.id }, timestamp: currentTimestamp)) {
+                        transaction.putItemCacheEntry(id: ItemCacheEntryId(collectionId: Namespaces.CachedItemCollection.cachedGroupCallDisplayAsPeers, key: key), entry: entry, collectionSpec: ItemCacheCollectionSpec(lowWaterItemCount: 10, highWaterItemCount: 20))
+                    }
                     return peers
                 }
             }
@@ -2363,7 +2388,7 @@ public final class AudioBroadcastDataSource {
 }
 
 func _internal_getAudioBroadcastDataSource(account: Account, callId: Int64, accessHash: Int64) -> Signal<AudioBroadcastDataSource?, NoError> {
-    return account.network.request(Api.functions.phone.getGroupCall(call: .inputGroupCall(id: callId, accessHash: accessHash)))
+    return account.network.request(Api.functions.phone.getGroupCall(call: .inputGroupCall(id: callId, accessHash: accessHash), limit: 4))
     |> map(Optional.init)
     |> `catch` { _ -> Signal<Api.phone.GroupCall?, NoError> in
         return .single(nil)
@@ -2396,6 +2421,11 @@ public struct GetAudioBroadcastPartResult {
     
     public var status: Status
     public var responseTimestamp: Double
+
+    public init(status: Status, responseTimestamp: Double) {
+        self.status = status
+        self.responseTimestamp = responseTimestamp
+    }
 }
 
 func _internal_getAudioBroadcastPart(dataSource: AudioBroadcastDataSource, callId: Int64, accessHash: Int64, timestampIdMilliseconds: Int64, durationMilliseconds: Int64) -> Signal<GetAudioBroadcastPartResult, NoError> {
@@ -2409,7 +2439,58 @@ func _internal_getAudioBroadcastPart(dataSource: AudioBroadcastDataSource, callI
         return .single(GetAudioBroadcastPartResult(status: .notReady, responseTimestamp: Double(timestampIdMilliseconds) / 1000.0))
     }
     
-    return dataSource.download.requestWithAdditionalData(Api.functions.upload.getFile(flags: 0, location: .inputGroupCallStream(call: .inputGroupCall(id: callId, accessHash: accessHash), timeMs: timestampIdMilliseconds, scale: scale), offset: 0, limit: 128 * 1024), automaticFloodWait: false, failOnServerErrors: true)
+    return dataSource.download.requestWithAdditionalData(Api.functions.upload.getFile(flags: 0, location: .inputGroupCallStream(flags: 0, call: .inputGroupCall(id: callId, accessHash: accessHash), timeMs: timestampIdMilliseconds, scale: scale, videoChannel: nil, videoQuality: nil), offset: 0, limit: 128 * 1024), automaticFloodWait: false, failOnServerErrors: true)
+    |> map { result, responseTimestamp -> GetAudioBroadcastPartResult in
+        switch result {
+        case let .file(_, _, bytes):
+            return GetAudioBroadcastPartResult(
+                status: .data(bytes.makeData()),
+                responseTimestamp: responseTimestamp
+            )
+        case .fileCdnRedirect:
+            return GetAudioBroadcastPartResult(
+                status: .notReady,
+                responseTimestamp: responseTimestamp
+            )
+        }
+    }
+    |> `catch` { error, responseTimestamp -> Signal<GetAudioBroadcastPartResult, NoError> in
+        if error.errorDescription == "GROUPCALL_JOIN_MISSING" {
+            return .single(GetAudioBroadcastPartResult(
+                status: .rejoinNeeded,
+                responseTimestamp: responseTimestamp
+            ))
+        } else if error.errorDescription.hasPrefix("FLOOD_WAIT") || error.errorDescription == "TIME_TOO_BIG" {
+            return .single(GetAudioBroadcastPartResult(
+                status: .notReady,
+                responseTimestamp: responseTimestamp
+            ))
+        } else if error.errorDescription == "TIME_INVALID" || error.errorDescription == "TIME_TOO_SMALL" {
+            return .single(GetAudioBroadcastPartResult(
+                status: .resyncNeeded,
+                responseTimestamp: responseTimestamp
+            ))
+        } else {
+            return .single(GetAudioBroadcastPartResult(
+                status: .resyncNeeded,
+                responseTimestamp: responseTimestamp
+            ))
+        }
+    }
+}
+
+func _internal_getVideoBroadcastPart(dataSource: AudioBroadcastDataSource, callId: Int64, accessHash: Int64, timestampIdMilliseconds: Int64, durationMilliseconds: Int64, channelId: Int32, quality: Int32) -> Signal<GetAudioBroadcastPartResult, NoError> {
+    let scale: Int32
+    switch durationMilliseconds {
+    case 1000:
+        scale = 0
+    case 500:
+        scale = 1
+    default:
+        return .single(GetAudioBroadcastPartResult(status: .notReady, responseTimestamp: Double(timestampIdMilliseconds) / 1000.0))
+    }
+
+    return dataSource.download.requestWithAdditionalData(Api.functions.upload.getFile(flags: 0, location: .inputGroupCallStream(flags: 1 << 0, call: .inputGroupCall(id: callId, accessHash: accessHash), timeMs: timestampIdMilliseconds, scale: scale, videoChannel: channelId, videoQuality: quality), offset: 0, limit: 512 * 1024), automaticFloodWait: false, failOnServerErrors: true)
     |> map { result, responseTimestamp -> GetAudioBroadcastPartResult in
         switch result {
         case let .file(_, _, bytes):

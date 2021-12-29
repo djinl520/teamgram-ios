@@ -175,6 +175,10 @@ final class ChatEmptyNodeGreetingChatContent: ASDisplayNode, ChatEmptyNodeSticke
                         },
                         openSettings: {
                         },
+                        openTrending: { _ in
+                        },
+                        dismissTrendingPacks: { _ in
+                        },
                         toggleSearch: { _, _, _ in
                         },
                         openPeerSpecificSettings: {
@@ -303,7 +307,7 @@ final class ChatEmptyNodeNearbyChatContent: ASDisplayNode, ChatEmptyNodeStickerC
             
             if let renderedPeer = interfaceState.renderedPeer {
                 if let chatPeer = renderedPeer.peers[renderedPeer.peerId] {
-                    displayName = chatPeer.compactDisplayTitle
+                    displayName = EnginePeer(chatPeer).compactDisplayTitle
                 }
             }
 
@@ -341,6 +345,10 @@ final class ChatEmptyNodeNearbyChatContent: ASDisplayNode, ChatEmptyNodeStickerC
                         setGifMode: { _ in
                         },
                         openSettings: {
+                        },
+                        openTrending: { _ in
+                        },
+                        dismissTrendingPacks: { _ in
                         },
                         toggleSearch: { _, _, _ in
                         },
@@ -435,7 +443,7 @@ private final class ChatEmptyNodeSecretChatContent: ASDisplayNode, ChatEmptyNode
                         incoming = true
                     }
                     if let user = renderedPeer.peers[chatPeer.regularPeerId] {
-                        title = user.compactDisplayTitle
+                        title = EnginePeer(user).compactDisplayTitle
                     }
                 }
             }

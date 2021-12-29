@@ -172,7 +172,7 @@ final class SharePeersContainerNode: ASDisplayNode, ShareContentContainerNode {
         var hasOtherAccounts = false
         if switchableAccounts.count > 1, let info = switchableAccounts.first(where: { $0.account.id == context.account.id }) {
             hasOtherAccounts = true
-            self.contentTitleAccountNode.setPeer(context: context, theme: theme, peer: info.peer, emptyColor: nil, synchronousLoad: false)
+            self.contentTitleAccountNode.setPeer(context: context, theme: theme, peer: EnginePeer(info.peer), emptyColor: nil, synchronousLoad: false)
         } else {
             self.contentTitleAccountNode.isHidden = true
         }
@@ -310,7 +310,7 @@ final class SharePeersContainerNode: ASDisplayNode, ShareContentContainerNode {
     func deactivate() {
     }
     
-    func updateLayout(size: CGSize, bottomInset: CGFloat, transition: ContainedViewLayoutTransition) {
+    func updateLayout(size: CGSize, isLandscape: Bool, bottomInset: CGFloat, transition: ContainedViewLayoutTransition) {
         let firstLayout = self.validLayout == nil
         self.validLayout = (size, bottomInset)
         
@@ -422,7 +422,7 @@ final class SharePeersContainerNode: ASDisplayNode, ShareContentContainerNode {
                     if peer.peerId == self.accountPeer.id {
                         text = self.strings.DialogList_SavedMessages
                     } else {
-                        text = peer.chatMainPeer?.displayTitle(strings: self.strings, displayOrder: self.nameDisplayOrder) ?? ""
+                        text = peer.chatMainPeer.flatMap(EnginePeer.init)?.displayTitle(strings: self.strings, displayOrder: self.nameDisplayOrder) ?? ""
                     }
                     
                     if !string.isEmpty {

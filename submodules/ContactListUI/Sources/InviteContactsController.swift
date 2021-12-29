@@ -2,7 +2,6 @@ import Foundation
 import UIKit
 import Display
 import AsyncDisplayKit
-import Postbox
 import SwiftSignalKit
 import TelegramCore
 import MessageUI
@@ -178,7 +177,7 @@ public class InviteContactsController: ViewController, MFMessageComposeViewContr
             }
         }
         
-        self.contactsNode.listNode.didEndScrolling = { [weak self] in
+        self.contactsNode.listNode.didEndScrolling = { [weak self] _ in
             if let strongSelf = self, let searchContentNode = strongSelf.searchContentNode {
                 let _ = fixNavigationSearchableListNodeScrolling(strongSelf.contactsNode.listNode, searchNode: searchContentNode)
             }

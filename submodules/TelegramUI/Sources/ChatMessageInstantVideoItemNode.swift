@@ -43,11 +43,11 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
     }
 
     private var forwardInfoNode: ChatMessageForwardInfoNode?
-    private var forwardBackgroundNode: ASImageNode?
+    private var forwardBackgroundNode: NavigationBackgroundNode?
     
     private var viaBotNode: TextNode?
     private var replyInfoNode: ChatMessageReplyInfoNode?
-    private var replyBackgroundNode: ASImageNode?
+    private var replyBackgroundNode: NavigationBackgroundNode?
     
     private var actionButtonsNode: ChatMessageActionButtonsNode?
     
@@ -241,7 +241,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
         }
     }
     
-    override func asyncLayout() -> (_ item: ChatMessageItem, _ params: ListViewItemLayoutParams, _ mergedTop: ChatMessageMerge, _ mergedBottom: ChatMessageMerge, _ dateHeaderAtBottom: Bool) -> (ListViewItemNodeLayout, (ListViewItemUpdateAnimation, Bool) -> Void) {
+    override func asyncLayout() -> (_ item: ChatMessageItem, _ params: ListViewItemLayoutParams, _ mergedTop: ChatMessageMerge, _ mergedBottom: ChatMessageMerge, _ dateHeaderAtBottom: Bool) -> (ListViewItemNodeLayout, (ListViewItemUpdateAnimation, ListViewItemApply, Bool) -> Void) {
         let layoutConstants = self.layoutConstants
         
         let makeVideoLayout = self.interactiveVideoNode.asyncLayout()
@@ -306,16 +306,16 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
             
             let isFailed = item.content.firstMessage.effectivelyFailed(timestamp: item.context.account.network.getApproximateRemoteTimestamp())
             
-            var needShareButton = false
+            var needsShareButton = false
             if case .pinnedMessages = item.associatedData.subject {
-                needShareButton = true
+                needsShareButton = true
             } else if isFailed || Namespaces.Message.allScheduled.contains(item.message.id.namespace) {
-                needShareButton = false
+                needsShareButton = false
             }
             else if item.message.id.peerId == item.context.account.peerId {
                 for attribute in item.content.firstMessage.attributes {
                     if let _ = attribute as? SourceReferenceMessageAttribute {
-                        needShareButton = true
+                        needsShareButton = true
                         break
                     }
                 }
@@ -323,30 +323,34 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                 if let peer = item.message.peers[item.message.id.peerId] {
                     if let channel = peer as? TelegramChannel {
                         if case .broadcast = channel.info {
-                            needShareButton = true
+                            needsShareButton = true
                         }
                     }
                 }
-                if !needShareButton, let author = item.message.author as? TelegramUser, let _ = author.botInfo, !item.message.media.isEmpty {
-                    needShareButton = true
+                if !needsShareButton, let author = item.message.author as? TelegramUser, let _ = author.botInfo, !item.message.media.isEmpty {
+                    needsShareButton = true
                 }
-                if !needShareButton {
+                if !needsShareButton {
                     loop: for media in item.message.media {
                         if media is TelegramMediaGame || media is TelegramMediaInvoice {
-                            needShareButton = true
+                            needsShareButton = true
                             break loop
                         } else if let media = media as? TelegramMediaWebpage, case .Loaded = media.content {
-                            needShareButton = true
+                            needsShareButton = true
                             break loop
                         }
                     }
                 } else {
                     loop: for media in item.message.media {
                         if media is TelegramMediaAction {
-                            needShareButton = false
+                            needsShareButton = false
                             break loop
                         }
                     }
+                }
+                
+                if item.associatedData.isCopyProtectionEnabled {
+                    needsShareButton = false
                 }
             }
             
@@ -389,8 +393,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
             
             var viaBotApply: (TextNodeLayout, () -> TextNode)?
             var replyInfoApply: (CGSize, () -> ChatMessageReplyInfoNode)?
-            var updatedReplyBackgroundNode: ASImageNode?
-            var replyBackgroundImage: UIImage?
+            var updatedReplyBackgroundNode: NavigationBackgroundNode?
             var replyMarkup: ReplyMarkupMessageAttribute?
             
             let availableWidth = max(60.0, params.width - params.leftInset - params.rightInset - normalDisplaySize.width - 20.0 - layoutConstants.bubble.edgeInset * 2.0 - avatarInset - layoutConstants.bubble.contentInsets.left)
@@ -432,6 +435,8 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                         let botString = addAttributesToStringWithRanges(item.presentationData.strings.Conversation_MessageViaUser("@\(inlineBotNameString)")._tuple, body: bodyAttributes, argumentAttributes: [0: boldAttributes])
                         
                         viaBotApply = viaBotLayout(TextNodeLayoutArguments(attributedString: botString, backgroundColor: nil, maximumNumberOfLines: 1, truncationType: .end, constrainedSize: CGSize(width: max(0, availableWidth), height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
+                        
+                        ignoreForward = true
                     }
                 }
                 
@@ -441,7 +446,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                             if let sourcePeer = item.message.peers[attribute.messageId.peerId] {
                                 let inlineBotNameColor = serviceMessageColorComponents(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper).primaryText
                                 
-                                let nameString = NSAttributedString(string: sourcePeer.displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder), font: inlineBotPrefixFont, textColor: inlineBotNameColor)
+                                let nameString = NSAttributedString(string: EnginePeer(sourcePeer).displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder), font: inlineBotPrefixFont, textColor: inlineBotNameColor)
                                 
                                 viaBotApply = viaBotLayout(TextNodeLayoutArguments(attributedString: nameString, backgroundColor: nil, maximumNumberOfLines: 1, truncationType: .end, constrainedSize: CGSize(width: max(0, availableWidth), height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
                             }
@@ -464,15 +469,14 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                 if let currentReplyBackgroundNode = currentReplyBackgroundNode {
                     updatedReplyBackgroundNode = currentReplyBackgroundNode
                 } else {
-                    updatedReplyBackgroundNode = ASImageNode()
+                    updatedReplyBackgroundNode = NavigationBackgroundNode(color: selectDateFillStaticColor(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper), enableBlur: dateFillNeedsBlur(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper))
                 }
                 
-                let graphics = PresentationResourcesChat.additionalGraphics(item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper, bubbleCorners: item.presentationData.chatBubbleCorners)
-                replyBackgroundImage = graphics.chatFreeformContentAdditionalInfoBackgroundImage
+                updatedReplyBackgroundNode?.updateColor(color: selectDateFillStaticColor(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper), enableBlur: dateFillNeedsBlur(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper), transition: .immediate)
             }
             
             var updatedShareButtonNode: ChatMessageShareButton?
-            if needShareButton {
+            if needsShareButton {
                 if currentShareButtonNode != nil {
                     updatedShareButtonNode = currentShareButtonNode
                 } else {
@@ -487,8 +491,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
             var forwardAuthorSignature: String?
             
             var forwardInfoSizeApply: (CGSize, (CGFloat) -> ChatMessageForwardInfoNode)?
-            var updatedForwardBackgroundNode: ASImageNode?
-            var forwardBackgroundImage: UIImage?
+            var updatedForwardBackgroundNode: NavigationBackgroundNode?
             
             if !ignoreForward, let forwardInfo = item.message.forwardInfo {
                 let forwardPsaType = forwardInfo.psaType
@@ -498,14 +501,14 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                     if let authorSignature = forwardInfo.authorSignature {
                         forwardAuthorSignature = authorSignature
                     } else if let forwardInfoAuthor = forwardInfo.author, forwardInfoAuthor.id != source.id {
-                        forwardAuthorSignature = forwardInfoAuthor.displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder)
+                        forwardAuthorSignature = EnginePeer(forwardInfoAuthor).displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder)
                     } else {
                         forwardAuthorSignature = nil
                     }
                 } else {
                     if let currentForwardInfo = currentForwardInfo, forwardInfo.author == nil && currentForwardInfo.0 != nil {
                         forwardSource = nil
-                        forwardAuthorSignature = currentForwardInfo.0?.displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder)
+                        forwardAuthorSignature = currentForwardInfo.0.flatMap(EnginePeer.init)?.displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder)
                     } else {
                         forwardSource = forwardInfo.author
                         forwardAuthorSignature = forwardInfo.authorSignature
@@ -517,11 +520,10 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                 if let currentForwardBackgroundNode = currentForwardBackgroundNode {
                     updatedForwardBackgroundNode = currentForwardBackgroundNode
                 } else {
-                    updatedForwardBackgroundNode = ASImageNode()
+                    updatedForwardBackgroundNode = NavigationBackgroundNode(color: selectDateFillStaticColor(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper), enableBlur: dateFillNeedsBlur(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper))
                 }
                 
-                let graphics = PresentationResourcesChat.additionalGraphics(item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper, bubbleCorners: item.presentationData.chatBubbleCorners)
-                forwardBackgroundImage = graphics.chatServiceBubbleFillImage
+                updatedForwardBackgroundNode?.updateColor(color: selectDateFillStaticColor(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper), enableBlur: dateFillNeedsBlur(theme: item.presentationData.theme.theme, wallpaper: item.presentationData.theme.wallpaper), transition: .immediate)
             }
             
             var maxContentWidth = normalDisplaySize.width
@@ -542,7 +544,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                 layoutSize.height += actionButtonsSizeAndApply.0.height
             }
             
-            return (ListViewItemNodeLayout(contentSize: layoutSize, insets: layoutInsets), { [weak self] animation, _ in
+            return (ListViewItemNodeLayout(contentSize: layoutSize, insets: layoutInsets), { [weak self] animation, _, _ in
                 if let strongSelf = self {
                     let transition: ContainedViewLayoutTransition
                     if animation.isAnimated {
@@ -613,10 +615,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                         if let updatedReplyBackgroundNode = updatedReplyBackgroundNode {
                             if strongSelf.replyBackgroundNode == nil {
                                 strongSelf.replyBackgroundNode = updatedReplyBackgroundNode
-                                strongSelf.addSubnode(updatedReplyBackgroundNode)
-                                updatedReplyBackgroundNode.image = replyBackgroundImage
-                            } else {
-                                strongSelf.replyBackgroundNode?.image = replyBackgroundImage
+                                strongSelf.contextSourceNode.contentNode.addSubnode(updatedReplyBackgroundNode)
                             }
                         } else if let replyBackgroundNode = strongSelf.replyBackgroundNode {
                             replyBackgroundNode.removeFromSupernode()
@@ -627,11 +626,13 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                             let viaBotNode = viaBotApply()
                             if strongSelf.viaBotNode == nil {
                                 strongSelf.viaBotNode = viaBotNode
-                                strongSelf.addSubnode(viaBotNode)
+                                strongSelf.contextSourceNode.contentNode.addSubnode(viaBotNode)
                             }
                             let viaBotFrame = CGRect(origin: CGPoint(x: (!incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + 10.0) : (params.width - params.rightInset - viaBotLayout.size.width - layoutConstants.bubble.edgeInset - 10.0)), y: 8.0), size: viaBotLayout.size)
                             viaBotNode.frame = viaBotFrame
-                            strongSelf.replyBackgroundNode?.frame = CGRect(origin: CGPoint(x: viaBotFrame.minX - 4.0, y: viaBotFrame.minY - 2.0), size: CGSize(width: viaBotFrame.size.width + 8.0, height: viaBotFrame.size.height + 5.0))
+                            let replyBackgroundFrame = CGRect(origin: CGPoint(x: viaBotFrame.minX - 4.0, y: viaBotFrame.minY - 2.0), size: CGSize(width: viaBotFrame.size.width + 8.0, height: viaBotFrame.size.height + 5.0))
+                            strongSelf.replyBackgroundNode?.frame = replyBackgroundFrame
+                            strongSelf.replyBackgroundNode?.update(size: replyBackgroundFrame.size, cornerRadius: 8.0, transition: .immediate)
                         } else if let viaBotNode = strongSelf.viaBotNode {
                             viaBotNode.removeFromSupernode()
                             strongSelf.viaBotNode = nil
@@ -641,7 +642,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                             let replyInfoNode = replyInfoApply()
                             if strongSelf.replyInfoNode == nil {
                                 strongSelf.replyInfoNode = replyInfoNode
-                                strongSelf.addSubnode(replyInfoNode)
+                                strongSelf.contextSourceNode.contentNode.addSubnode(replyInfoNode)
                             }
                             var viaBotSize = CGSize()
                             if let viaBotNode = strongSelf.viaBotNode {
@@ -654,7 +655,9 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                                 }
                             }
                             replyInfoNode.frame = replyInfoFrame
-                            strongSelf.replyBackgroundNode?.frame = CGRect(origin: CGPoint(x: replyInfoFrame.minX - 4.0, y: replyInfoFrame.minY - viaBotSize.height - 2.0), size: CGSize(width: max(replyInfoFrame.size.width, viaBotSize.width) + 8.0, height: replyInfoFrame.size.height + viaBotSize.height + 5.0))
+                            let replyBackgroundFrame = CGRect(origin: CGPoint(x: replyInfoFrame.minX - 4.0, y: replyInfoFrame.minY - viaBotSize.height - 2.0), size: CGSize(width: max(replyInfoFrame.size.width, viaBotSize.width) + 8.0, height: replyInfoFrame.size.height + viaBotSize.height + 5.0))
+                            strongSelf.replyBackgroundNode?.frame = replyBackgroundFrame
+                            strongSelf.replyBackgroundNode?.update(size: replyBackgroundFrame.size, cornerRadius: 8.0, transition: .immediate)
                         } else if let replyInfoNode = strongSelf.replyInfoNode {
                             replyInfoNode.removeFromSupernode()
                             strongSelf.replyInfoNode = nil
@@ -694,32 +697,57 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                         if let updatedForwardBackgroundNode = updatedForwardBackgroundNode {
                             if strongSelf.forwardBackgroundNode == nil {
                                 strongSelf.forwardBackgroundNode = updatedForwardBackgroundNode
-                                strongSelf.addSubnode(updatedForwardBackgroundNode)
-                                updatedForwardBackgroundNode.image = forwardBackgroundImage
+                                strongSelf.contextSourceNode.contentNode.addSubnode(updatedForwardBackgroundNode)
+                                
+                                if animation.isAnimated {
+                                    updatedForwardBackgroundNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2)
+                                }
                             }
                         } else if let forwardBackgroundNode = strongSelf.forwardBackgroundNode {
-                            forwardBackgroundNode.removeFromSupernode()
-                            strongSelf.forwardBackgroundNode = nil
+                            if animation.isAnimated {
+                                strongSelf.forwardBackgroundNode = nil
+                                forwardBackgroundNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.1, removeOnCompletion: false, completion: { [weak forwardBackgroundNode] _ in
+                                    forwardBackgroundNode?.removeFromSupernode()
+                                })
+                            } else {
+                                forwardBackgroundNode.removeFromSupernode()
+                                strongSelf.forwardBackgroundNode = nil
+                            }
                         }
                         
                         if let (forwardInfoSize, forwardInfoApply) = forwardInfoSizeApply {
                             let forwardInfoNode = forwardInfoApply(forwardInfoSize.width)
                             if strongSelf.forwardInfoNode == nil {
                                 strongSelf.forwardInfoNode = forwardInfoNode
-                                strongSelf.addSubnode(forwardInfoNode)
+                                strongSelf.contextSourceNode.contentNode.addSubnode(forwardInfoNode)
                                 forwardInfoNode.openPsa = { [weak strongSelf] type, sourceNode in
                                     guard let strongSelf = strongSelf, let item = strongSelf.item else {
                                         return
                                     }
                                     item.controllerInteraction.displayPsa(type, sourceNode)
                                 }
+                                
+                                if animation.isAnimated {
+                                    forwardInfoNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2)
+                                }
                             }
                             let forwardInfoFrame = CGRect(origin: CGPoint(x: (!incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + 12.0) : (params.width - params.rightInset - forwardInfoSize.width - layoutConstants.bubble.edgeInset - 12.0)), y: 8.0), size: forwardInfoSize)
                             forwardInfoNode.frame = forwardInfoFrame
-                            strongSelf.forwardBackgroundNode?.frame = CGRect(origin: CGPoint(x: forwardInfoFrame.minX - 6.0, y: forwardInfoFrame.minY - 2.0), size: CGSize(width: forwardInfoFrame.size.width + 10.0, height: forwardInfoFrame.size.height + 4.0))
+                            let forwardBackgroundFrame = CGRect(origin: CGPoint(x: forwardInfoFrame.minX - 6.0, y: forwardInfoFrame.minY - 2.0), size: CGSize(width: forwardInfoFrame.size.width + 10.0, height: forwardInfoFrame.size.height + 4.0))
+                            strongSelf.forwardBackgroundNode?.frame = forwardBackgroundFrame
+                            strongSelf.forwardBackgroundNode?.update(size: forwardBackgroundFrame.size, cornerRadius: 8.0, transition: .immediate)
                         } else if let forwardInfoNode = strongSelf.forwardInfoNode {
-                            forwardInfoNode.removeFromSupernode()
-                            strongSelf.forwardInfoNode = nil
+                            if animation.isAnimated {
+                                if let forwardInfoNode = strongSelf.forwardInfoNode {
+                                    strongSelf.forwardInfoNode = nil
+                                    forwardInfoNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.1, removeOnCompletion: false, completion: { [weak forwardInfoNode] _ in
+                                        forwardInfoNode?.removeFromSupernode()
+                                    })
+                                }
+                            } else {
+                                forwardInfoNode.removeFromSupernode()
+                                strongSelf.forwardInfoNode = nil
+                            }
                         }
                         
                         if let actionButtonsSizeAndApply = actionButtonsSizeAndApply {
@@ -803,7 +831,7 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                     for attribute in item.content.firstMessage.attributes {
                         if let attribute = attribute as? SourceReferenceMessageAttribute {
                             openPeerId = attribute.messageId.peerId
-                            navigate = .chat(textInputState: nil, subject: .message(id: attribute.messageId, highlight: true, timecode: nil), peekData: nil)
+                            navigate = .chat(textInputState: nil, subject: .message(id: .id(attribute.messageId), highlight: true, timecode: nil), peekData: nil)
                         }
                     }
                     
@@ -956,10 +984,6 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
                             break
                         case .reply:
                             item.controllerInteraction.setupReply(item.message.id)
-                        case .like:
-                            item.controllerInteraction.updateMessageLike(item.message.id, true)
-                        case .unlike:
-                            item.controllerInteraction.updateMessageLike(item.message.id, true)
                         }
                     }
                 }
@@ -1222,5 +1246,12 @@ class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureRecognizerD
             let actionButtonsFrame = CGRect(origin: CGPoint(x: videoFrame.minX, y: videoFrame.maxY), size: actionButtonsSize)
             actionButtonsNode.frame = actionButtonsFrame
         }
+    }
+    
+    override func targetReactionNode(value: String) -> (ASDisplayNode, ASDisplayNode)? {
+        if !self.interactiveVideoNode.dateAndStatusNode.isHidden {
+            return self.interactiveVideoNode.dateAndStatusNode.reactionNode(value: value)
+        }
+        return nil
     }
 }

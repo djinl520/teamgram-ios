@@ -311,10 +311,7 @@ func inputTextPanelStateForChatPresentationInterfaceState(_ chatPresentationInte
                             stickersEnabled = false
                         }
                     }
-//                    if let peer = chatPresentationInterfaceState.renderedPeer?.peer as? TelegramUser, let _ = peer.botInfo {
-//                        accessoryItems.append(.commands)
-//                    } else
-                    if chatPresentationInterfaceState.hasBots {
+                    if chatPresentationInterfaceState.hasBots && chatPresentationInterfaceState.hasBotCommands {
                         accessoryItems.append(.commands)
                     }
                     accessoryItems.append(.stickers(stickersEnabled))

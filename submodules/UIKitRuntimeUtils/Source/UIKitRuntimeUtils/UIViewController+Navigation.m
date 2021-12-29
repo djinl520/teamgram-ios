@@ -238,6 +238,24 @@ static bool notyfyingShiftState = false;
 
 @end
 
+@implementation UIApplication (Additions)
+
+- (void)internalSetStatusBarStyle:(UIStatusBarStyle)style animated:(BOOL)animated {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    [self setStatusBarStyle:style animated:animated];
+#pragma clang diagnostic pop
+}
+
+- (void)internalSetStatusBarHidden:(BOOL)hidden animation:(UIStatusBarAnimation)animation {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    [self setStatusBarHidden:hidden withAnimation:animation];
+#pragma clang diagnostic pop
+}
+
+@end
+
 @implementation UIView (Navigation)
 
 - (bool)disablesInteractiveTransitionGestureRecognizer {
@@ -301,20 +319,6 @@ static bool notyfyingShiftState = false;
 }
 
 @end
-
-static NSString *TGEncodeText(NSString *string, int key)
-{
-    NSMutableString *result = [[NSMutableString alloc] init];
-    
-    for (int i = 0; i < (int)[string length]; i++)
-    {
-        unichar c = [string characterAtIndex:i];
-        c += key;
-        [result appendString:[NSString stringWithCharacters:&c length:1]];
-    }
-    
-    return result;
-}
 
 void applyKeyboardAutocorrection(UITextView * _Nonnull textView) {
     NSRange rangeCopy = textView.selectedRange;

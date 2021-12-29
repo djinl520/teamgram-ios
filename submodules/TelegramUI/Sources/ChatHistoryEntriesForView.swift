@@ -6,29 +6,78 @@ import Emoji
 import AccountContext
 import TelegramPresentationData
 
-
-func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView, includeUnreadEntry: Bool, includeEmptyEntry: Bool, includeChatInfoEntry: Bool, includeSearchEntry: Bool, reverse: Bool, groupMessages: Bool, selectedMessages: Set<MessageId>?, presentationData: ChatPresentationData, historyAppearsCleared: Bool, pendingUnpinnedAllMessages: Bool, pendingRemovedMessages: Set<MessageId>, associatedData: ChatMessageItemAssociatedData, updatingMedia: [MessageId: ChatUpdatingMessageMedia], customChannelDiscussionReadState: MessageId?, customThreadOutgoingReadState: MessageId?) -> [ChatHistoryEntry] {
+func chatHistoryEntriesForView(
+    location: ChatLocation,
+    view: MessageHistoryView,
+    includeUnreadEntry: Bool,
+    includeEmptyEntry: Bool,
+    includeChatInfoEntry: Bool,
+    includeSearchEntry: Bool,
+    reverse: Bool,
+    groupMessages: Bool,
+    selectedMessages: Set<MessageId>?,
+    presentationData: ChatPresentationData,
+    historyAppearsCleared: Bool,
+    pendingUnpinnedAllMessages: Bool,
+    pendingRemovedMessages: Set<MessageId>,
+    associatedData: ChatMessageItemAssociatedData,
+    updatingMedia: [MessageId: ChatUpdatingMessageMedia],
+    customChannelDiscussionReadState: MessageId?,
+    customThreadOutgoingReadState: MessageId?,
+    cachedData: CachedPeerData?,
+    adMessages: [Message]
+) -> [ChatHistoryEntry] {
     if historyAppearsCleared {
         return []
     }
     var entries: [ChatHistoryEntry] = []
     var adminRanks: [PeerId: CachedChannelAdminRank] = [:]
     var stickersEnabled = true
+    var channelPeer: Peer?
     if case let .peer(peerId) = location, peerId.namespace == Namespaces.Peer.CloudChannel {
         for additionalEntry in view.additionalData {
             if case let .cacheEntry(id, data) = additionalEntry {
-                if id == cachedChannelAdminRanksEntryId(peerId: peerId), let data = data as? CachedChannelAdminRanks {
+                if id == cachedChannelAdminRanksEntryId(peerId: peerId), let data = data?.get(CachedChannelAdminRanks.self) {
                     adminRanks = data.ranks
                 }
             } else if case let .peer(_, peer) = additionalEntry, let channel = peer as? TelegramChannel, !channel.flags.contains(.isGigagroup) {
+                channelPeer = channel
                 if let defaultBannedRights = channel.defaultBannedRights, defaultBannedRights.flags.contains(.banSendStickers) {
                     stickersEnabled = false
                 }
             }
         }
     }
-
-    var groupBucket: [(Message, Bool, ChatHistoryMessageSelection, ChatMessageEntryAttributes)] = []
+    
+    var joinMessage: Message?
+    if case let .peer(peerId) = location, case let cachedData = cachedData as? CachedChannelData, let invitedOn = cachedData?.invitedOn  {
+        joinMessage = Message(
+            stableId: UInt32.max - 1000,
+            stableVersion: 0,
+            id: MessageId(peerId: peerId, namespace: Namespaces.Message.Local, id: 0),
+            globallyUniqueId: nil,
+            groupingKey: nil,
+            groupInfo: nil,
+            threadId: nil,
+            timestamp: invitedOn,
+            flags: [.Incoming],
+            tags: [],
+            globalTags: [],
+            localTags: [],
+            forwardInfo: nil,
+            author: channelPeer,
+            text: "",
+            attributes: [],
+            media: [TelegramMediaAction(action: .joinedByRequest)],
+            peers: SimpleDictionary<PeerId, Peer>(),
+            associatedMessages: SimpleDictionary<MessageId, Message>(),
+            associatedMessageIds: []
+        )
+    }
+        
+    
+    var groupBucket: [(Message, Bool, ChatHistoryMessageSelection, ChatMessageEntryAttributes, MessageHistoryEntryLocation?)] = []
+    var count = 0
     loop: for entry in view.entries {
         var message = entry.message
         var isRead = entry.isRead
@@ -36,6 +85,14 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
         if pendingRemovedMessages.contains(message.id) {
             continue
         }
+        
+        if let maybeJoinMessage = joinMessage {
+            if message.timestamp > maybeJoinMessage.timestamp, (!view.holeEarlier || count > 0) {
+                entries.append(.MessageEntry(maybeJoinMessage, presentationData, false, nil, .none, ChatMessageEntryAttributes(rank: nil, isContact: false, contentTypeHint: .generic, updatingMedia: nil, isPlaying: false)))
+                joinMessage = nil
+            }
+        }
+        count += 1
         
         if let customThreadOutgoingReadState = customThreadOutgoingReadState {
             isRead = customThreadOutgoingReadState >= message.id
@@ -77,7 +134,6 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
             adminRank = adminRanks[author.id]
         }
         
-        
         if presentationData.largeEmoji, message.media.isEmpty {
             if stickersEnabled && message.text.count == 1, let _ = associatedData.animatedEmojiStickers[message.text.basicEmoji.0] {
                 contentTypeHint = .animatedEmoji
@@ -98,7 +154,7 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
                 } else {
                     selection = .none
                 }
-                groupBucket.append((message, isRead, selection, ChatMessageEntryAttributes(rank: adminRank, isContact: entry.attributes.authorIsContact, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: false)))
+                groupBucket.append((message, isRead, selection, ChatMessageEntryAttributes(rank: adminRank, isContact: entry.attributes.authorIsContact, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: false), entry.location))
             } else {
                 let selection: ChatHistoryMessageSelection
                 if let selectedMessages = selectedMessages {
@@ -106,7 +162,7 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
                 } else {
                     selection = .none
                 }
-                entries.append(.MessageEntry(message, presentationData, isRead, entry.monthLocation, selection, ChatMessageEntryAttributes(rank: adminRank, isContact: entry.attributes.authorIsContact, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: message.index == associatedData.currentlyPlayingMessageId)))
+                entries.append(.MessageEntry(message, presentationData, isRead, entry.location, selection, ChatMessageEntryAttributes(rank: adminRank, isContact: entry.attributes.authorIsContact, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: message.index == associatedData.currentlyPlayingMessageId)))
             }
         } else {
             let selection: ChatHistoryMessageSelection
@@ -115,13 +171,18 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
             } else {
                 selection = .none
             }
-            entries.append(.MessageEntry(message, presentationData, isRead, entry.monthLocation, selection, ChatMessageEntryAttributes(rank: adminRank, isContact: entry.attributes.authorIsContact, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: message.index == associatedData.currentlyPlayingMessageId)))
+            entries.append(.MessageEntry(message, presentationData, isRead, entry.location, selection, ChatMessageEntryAttributes(rank: adminRank, isContact: entry.attributes.authorIsContact, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: message.index == associatedData.currentlyPlayingMessageId)))
         }
     }
     
     if !groupBucket.isEmpty {
         assert(groupMessages)
         entries.append(.MessageGroupEntry(groupBucket[0].0.groupInfo!, groupBucket, presentationData))
+    }
+    
+    if let maybeJoinMessage = joinMessage, !view.holeLater {
+        entries.append(.MessageEntry(maybeJoinMessage, presentationData, false, nil, .none, ChatMessageEntryAttributes(rank: nil, isContact: false, contentTypeHint: .generic, updatingMedia: nil, isPlaying: false)))
+        joinMessage = nil
     }
     
     if let maxReadIndex = view.maxReadIndex, includeUnreadEntry {
@@ -164,9 +225,9 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
                     
                     addedThreadHead = true
                     if messages.count > 1, let groupInfo = messages[0].groupInfo {
-                        var groupMessages: [(Message, Bool, ChatHistoryMessageSelection, ChatMessageEntryAttributes)] = []
+                        var groupMessages: [(Message, Bool, ChatHistoryMessageSelection, ChatMessageEntryAttributes, MessageHistoryEntryLocation?)] = []
                         for message in messages {
-                            groupMessages.append((message, false, .none, ChatMessageEntryAttributes(rank: adminRank, isContact: false, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: false)))
+                            groupMessages.append((message, false, .none, ChatMessageEntryAttributes(rank: adminRank, isContact: false, contentTypeHint: contentTypeHint, updatingMedia: updatingMedia[message.id], isPlaying: false), nil))
                         }
                         entries.insert(.MessageGroupEntry(groupInfo, groupMessages, presentationData), at: 0)
                     } else {
@@ -235,6 +296,38 @@ func chatHistoryEntriesForView(location: ChatLocation, view: MessageHistoryView,
                 }
                 if isEmpty {
                     entries.removeAll()
+                }
+            }
+        }
+
+        if view.laterId == nil && !view.isLoading {
+            if !entries.isEmpty, case let .MessageEntry(lastMessage, _, _, _, _, _) = entries[entries.count - 1], !adMessages.isEmpty {
+                var nextAdMessageId: Int32 = 1
+                for message in adMessages {
+                    let updatedMessage = Message(
+                        stableId: UInt32.max - 1 - UInt32(nextAdMessageId),
+                        stableVersion: message.stableVersion,
+                        id: MessageId(peerId: message.id.peerId, namespace: message.id.namespace, id: nextAdMessageId),
+                        globallyUniqueId: nil,
+                        groupingKey: nil,
+                        groupInfo: nil,
+                        threadId: nil,
+                        timestamp: lastMessage.timestamp,
+                        flags: message.flags,
+                        tags: message.tags,
+                        globalTags: message.globalTags,
+                        localTags: message.localTags,
+                        forwardInfo: message.forwardInfo,
+                        author: message.author,
+                        text: message.text,
+                        attributes: message.attributes,
+                        media: message.media,
+                        peers: message.peers,
+                        associatedMessages: message.associatedMessages,
+                        associatedMessageIds: message.associatedMessageIds
+                    )
+                    nextAdMessageId += 1
+                    entries.append(.MessageEntry(updatedMessage, presentationData, false, nil, .none, ChatMessageEntryAttributes(rank: nil, isContact: false, contentTypeHint: .generic, updatingMedia: nil, isPlaying: false)))
                 }
             }
         }

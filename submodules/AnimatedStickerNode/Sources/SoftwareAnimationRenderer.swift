@@ -10,6 +10,7 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
     private var highlightedColor: UIColor?
     
     func render(queue: Queue, width: Int, height: Int, bytesPerRow: Int, data: Data, type: AnimationRendererFrameType, completion: @escaping () -> Void) {
+        assert(bytesPerRow > 0)
         queue.async { [weak self] in
             switch type {
             case .argb:
@@ -19,22 +20,39 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
                 break
             }
             
-            let image = generateImagePixel(CGSize(width: CGFloat(width), height: CGFloat(height)), scale: 1.0, pixelGenerator: { _, pixelData, bytesPerRow in
-                switch type {
-                case .yuva:
-                    data.withUnsafeBytes { (bytes: UnsafePointer<UInt8>) -> Void in
-                        decodeYUVAToRGBA(bytes, pixelData, Int32(width), Int32(height), Int32(bytesPerRow))
+            var image: UIImage?
+            
+            autoreleasepool {
+                image = generateImagePixel(CGSize(width: CGFloat(width), height: CGFloat(height)), scale: 1.0, pixelGenerator: { _, pixelData, contextBytesPerRow in
+                    switch type {
+                    case .yuva:
+                        data.withUnsafeBytes { bytes -> Void in
+                            guard let baseAddress = bytes.baseAddress else {
+                                return
+                            }
+                            if bytesPerRow <= 0 || height <= 0 || width <= 0 || bytesPerRow * height > bytes.count {
+                                assert(false)
+                                return
+                            }
+                            decodeYUVAToRGBA(baseAddress.assumingMemoryBound(to: UInt8.self), pixelData, Int32(width), Int32(height), Int32(contextBytesPerRow))
+                        }
+                    case .argb:
+                        data.withUnsafeBytes { bytes -> Void in
+                            guard let baseAddress = bytes.baseAddress else {
+                                return
+                            }
+                            memcpy(pixelData, baseAddress.assumingMemoryBound(to: UInt8.self), bytes.count)
+                        }
                     }
-                case .argb:
-                    data.withUnsafeBytes { (bytes: UnsafePointer<UInt8>) -> Void in
-                        memcpy(pixelData, bytes, data.count)
-                    }
-                }
-            })
+                })
+            }
             
             Queue.mainQueue().async {
-                self?.contents = image?.cgImage
-                self?.updateHighlightedContentNode()
+                guard let strongSelf = self else {
+                    return
+                }
+                strongSelf.contents = image?.cgImage
+                strongSelf.updateHighlightedContentNode()
                 completion()
             }
         }

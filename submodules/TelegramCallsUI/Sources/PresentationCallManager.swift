@@ -49,7 +49,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     private let isMediaPlaying: () -> Bool
     private let resumeMediaPlayback: () -> Void
 
-    private let accountManager: AccountManager
+    private let accountManager: AccountManager<TelegramAccountManagerTypes>
     private let audioSession: ManagedAudioSession
     private let callKitIntegration: CallKitIntegration?
     
@@ -113,7 +113,14 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         return OngoingCallContext.versions(includeExperimental: includeExperimental, includeReference: includeReference)
     }
     
-    public init(accountManager: AccountManager, getDeviceAccessData: @escaping () -> (presentationData: PresentationData, present: (ViewController, Any?) -> Void, openSettings: () -> Void), isMediaPlaying: @escaping () -> Bool, resumeMediaPlayback: @escaping () -> Void, audioSession: ManagedAudioSession, activeAccounts: Signal<[AccountContext], NoError>) {
+    public init(
+        accountManager: AccountManager<TelegramAccountManagerTypes>,
+        getDeviceAccessData: @escaping () -> (presentationData: PresentationData, present: (ViewController, Any?) -> Void, openSettings: () -> Void),
+        isMediaPlaying: @escaping () -> Bool,
+        resumeMediaPlayback: @escaping () -> Void,
+        audioSession: ManagedAudioSession,
+        activeAccounts: Signal<[AccountContext], NoError>
+    ) {
         self.getDeviceAccessData = getDeviceAccessData
         self.accountManager = accountManager
         self.audioSession = audioSession
@@ -127,7 +134,8 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         var setCallMutedImpl: ((UUID, Bool) -> Void)?
         var audioSessionActivationChangedImpl: ((Bool) -> Void)?
         
-        self.callKitIntegration = CallKitIntegration(startCall: { context, uuid, handle, isVideo in
+        self.callKitIntegration = CallKitIntegration.shared
+        self.callKitIntegration?.setup(startCall: { context, uuid, handle, isVideo in
             if let startCallImpl = startCallImpl {
                 return startCallImpl(context, uuid, handle, isVideo)
             } else {
@@ -149,7 +157,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         
         let enableCallKit = accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.voiceCallSettings])
         |> map { sharedData -> Bool in
-            let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.voiceCallSettings] as? VoiceCallSettings ?? .defaultSettings
+            let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.voiceCallSettings]?.get(VoiceCallSettings.self) ?? .defaultSettings
             return settings.enableSystemIntegration
         }
         |> distinctUntilChanged
@@ -204,8 +212,8 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         })
         
         startCallImpl = { [weak self] context, uuid, handle, isVideo in
-            if let strongSelf = self, let userId = Int32(handle) {
-                return strongSelf.startCall(context: context, peerId: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt32Value(userId)), isVideo: isVideo, internalId: uuid)
+            if let strongSelf = self, let userId = Int64(handle) {
+                return strongSelf.startCall(context: context, peerId: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(userId)), isVideo: isVideo, internalId: uuid)
                 |> take(1)
                 |> map { result -> Bool in
                     return result
@@ -245,7 +253,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         
         self.proxyServerDisposable = (accountManager.sharedData(keys: [SharedDataKeys.proxySettings])
         |> deliverOnMainQueue).start(next: { [weak self] sharedData in
-            if let strongSelf = self, let settings = sharedData.entries[SharedDataKeys.proxySettings] as? ProxySettings {
+            if let strongSelf = self, let settings = sharedData.entries[SharedDataKeys.proxySettings]?.get(ProxySettings.self) {
                 if settings.enabled && settings.useForCalls {
                     strongSelf.proxyServer = settings.activeServer
                 } else {
@@ -257,7 +265,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         self.callSettingsDisposable = (accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.voiceCallSettings])
         |> deliverOnMainQueue).start(next: { [weak self] sharedData in
             if let strongSelf = self {
-                strongSelf.callSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.voiceCallSettings] as? VoiceCallSettings ?? .defaultSettings
+                strongSelf.callSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.voiceCallSettings]?.get(VoiceCallSettings.self) ?? .defaultSettings
             }
         })
     }
@@ -281,11 +289,11 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                         return
                     }
                     
-                    let configuration = preferences.values[PreferencesKeys.voipConfiguration] as? VoipConfiguration ?? .defaultValue
-                    let derivedState = preferences.values[ApplicationSpecificPreferencesKeys.voipDerivedState] as? VoipDerivedState ?? .default
-                    let autodownloadSettings = sharedData.entries[SharedDataKeys.autodownloadSettings] as? AutodownloadSettings ?? .defaultSettings
-                    let experimentalSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.experimentalUISettings] as? ExperimentalUISettings ?? .defaultSettings
-                    let appConfiguration = preferences.values[PreferencesKeys.appConfiguration] as? AppConfiguration ?? AppConfiguration.defaultValue
+                    let configuration = preferences.values[PreferencesKeys.voipConfiguration]?.get(VoipConfiguration.self) ?? .defaultValue
+                    let derivedState = preferences.values[ApplicationSpecificPreferencesKeys.voipDerivedState]?.get(VoipDerivedState.self) ?? .default
+                    let autodownloadSettings = sharedData.entries[SharedDataKeys.autodownloadSettings]?.get(AutodownloadSettings.self) ?? .defaultSettings
+                    let experimentalSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.experimentalUISettings]?.get(ExperimentalUISettings.self) ?? .defaultSettings
+                    let appConfiguration = preferences.values[PreferencesKeys.appConfiguration]?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
                     
                     let call = PresentationCallImpl(
                         context: firstState.0,
@@ -486,7 +494,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
             }
             
             let request = context.account.postbox.transaction { transaction -> (VideoCallsConfiguration, CachedUserData?) in
-                let appConfiguration: AppConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration) as? AppConfiguration ?? AppConfiguration.defaultValue
+                let appConfiguration: AppConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
                 return (VideoCallsConfiguration(appConfiguration: appConfiguration), transaction.getPeerCachedData(peerId: peerId) as? CachedUserData)
             }
             |> mapToSignal { callsConfiguration, cachedUserData -> Signal<CallSessionInternalId, NoError> in
@@ -521,10 +529,10 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                         currentCall.rejectBusy()
                     }
                     
-                    let configuration = preferences.values[PreferencesKeys.voipConfiguration] as? VoipConfiguration ?? .defaultValue
-                    let derivedState = preferences.values[ApplicationSpecificPreferencesKeys.voipDerivedState] as? VoipDerivedState ?? .default
-                    let autodownloadSettings = sharedData.entries[SharedDataKeys.autodownloadSettings] as? AutodownloadSettings ?? .defaultSettings
-                    let appConfiguration = preferences.values[PreferencesKeys.appConfiguration] as? AppConfiguration ?? AppConfiguration.defaultValue
+                    let configuration = preferences.values[PreferencesKeys.voipConfiguration]?.get(VoipConfiguration.self) ?? .defaultValue
+                    let derivedState = preferences.values[ApplicationSpecificPreferencesKeys.voipDerivedState]?.get(VoipDerivedState.self) ?? .default
+                    let autodownloadSettings = sharedData.entries[SharedDataKeys.autodownloadSettings]?.get(AutodownloadSettings.self) ?? .defaultSettings
+                    let appConfiguration = preferences.values[PreferencesKeys.appConfiguration]?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
                     
                     let callsConfiguration = VideoCallsConfiguration(appConfiguration: appConfiguration)
                     var isVideoPossible: Bool
@@ -541,7 +549,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                         isVideoPossible = false
                     }
                     
-                    let experimentalSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.experimentalUISettings] as? ExperimentalUISettings ?? .defaultSettings
+                    let experimentalSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.experimentalUISettings]?.get(ExperimentalUISettings.self) ?? .defaultSettings
                     
                     let call = PresentationCallImpl(
                         context: context,
@@ -650,15 +658,23 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         }
         |> runOn(Queue.mainQueue())
         
-        return accessEnabledSignal
+        return combineLatest(queue: .mainQueue(),
+            accessEnabledSignal,
+            accountContext.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+        )
         |> deliverOnMainQueue
-        |> mapToSignal { [weak self] accessEnabled -> Signal<Bool, NoError> in
+        |> mapToSignal { [weak self] accessEnabled, peer -> Signal<Bool, NoError> in
             guard let strongSelf = self else {
                 return .single(false)
             }
             
             if !accessEnabled {
                 return .single(false)
+            }
+
+            var isChannel = false
+            if let peer = peer, case let .channel(channel) = peer, case .broadcast = channel.info {
+                isChannel = true
             }
                     
             let call = PresentationGroupCallImpl(
@@ -669,6 +685,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 initialCall: nil,
                 internalId: internalId,
                 peerId: peerId,
+                isChannel: isChannel,
                 invite: nil,
                 joinAsPeerId: nil
             )
@@ -728,7 +745,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         return .success
     }
     
-    public func joinGroupCall(context: AccountContext, peerId: PeerId, invite: String?, requestJoinAsPeerId: ((@escaping (PeerId?) -> Void) -> Void)?, initialCall: CachedChannelData.ActiveCall, endCurrentIfAny: Bool) -> JoinGroupCallManagerResult {
+    public func joinGroupCall(context: AccountContext, peerId: PeerId, invite: String?, requestJoinAsPeerId: ((@escaping (PeerId?) -> Void) -> Void)?, initialCall: EngineGroupCallDescription, endCurrentIfAny: Bool) -> JoinGroupCallManagerResult {
         let begin: () -> Void = { [weak self] in
             if let requestJoinAsPeerId = requestJoinAsPeerId {
                 requestJoinAsPeerId({ joinAsPeerId in
@@ -772,7 +789,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         peerId: PeerId,
         invite: String?,
         joinAsPeerId: PeerId?,
-        initialCall: CachedChannelData.ActiveCall,
+        initialCall: EngineGroupCallDescription,
         internalId: CallSessionInternalId = CallSessionInternalId()
     ) -> Signal<Bool, NoError> {
         let (presentationData, present, openSettings) = self.getDeviceAccessData()
@@ -803,15 +820,23 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         }
         |> runOn(Queue.mainQueue())
         
-        return accessEnabledSignal
+        return combineLatest(queue: .mainQueue(),
+            accessEnabledSignal,
+            accountContext.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+        )
         |> deliverOnMainQueue
-        |> mapToSignal { [weak self] accessEnabled -> Signal<Bool, NoError> in
+        |> mapToSignal { [weak self] accessEnabled, peer -> Signal<Bool, NoError> in
             guard let strongSelf = self else {
                 return .single(false)
             }
             
             if !accessEnabled {
                 return .single(false)
+            }
+
+            var isChannel = false
+            if let peer = peer, case let .channel(channel) = peer, case .broadcast = channel.info {
+                isChannel = true
             }
                     
             let call = PresentationGroupCallImpl(
@@ -822,6 +847,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 initialCall: initialCall,
                 internalId: internalId,
                 peerId: peerId,
+                isChannel: isChannel,
                 invite: invite,
                 joinAsPeerId: joinAsPeerId
             )

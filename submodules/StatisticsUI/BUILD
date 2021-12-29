@@ -6,6 +6,9 @@ swift_library(
     srcs = glob([
 		"Sources/**/*.swift",
     ]),
+    copts = [
+        "-warnings-as-errors",
+    ],
     deps = [
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
@@ -25,6 +28,7 @@ swift_library(
         "//submodules/GraphCore:GraphCore",
         "//submodules/GraphUI:GraphUI",
         "//submodules/AnimatedStickerNode:AnimatedStickerNode",
+        "//submodules/TelegramAnimatedStickerNode:TelegramAnimatedStickerNode",
         "//submodules/ItemListPeerItem:ItemListPeerItem",
         "//submodules/ItemListPeerActionItem:ItemListPeerActionItem",
         "//submodules/ContextUI:ContextUI",

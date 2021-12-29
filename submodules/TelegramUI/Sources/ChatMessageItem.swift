@@ -12,12 +12,15 @@ import Emoji
 import PersistentStringHash
 
 public enum ChatMessageItemContent: Sequence {
-    case message(message: Message, read: Bool, selection: ChatHistoryMessageSelection, attributes: ChatMessageEntryAttributes)
-    case group(messages: [(Message, Bool, ChatHistoryMessageSelection, ChatMessageEntryAttributes)])
+    case message(message: Message, read: Bool, selection: ChatHistoryMessageSelection, attributes: ChatMessageEntryAttributes, location: MessageHistoryEntryLocation?)
+    case group(messages: [(Message, Bool, ChatHistoryMessageSelection, ChatMessageEntryAttributes, MessageHistoryEntryLocation?)])
     
-    func effectivelyIncoming(_ accountPeerId: PeerId) -> Bool {
+    func effectivelyIncoming(_ accountPeerId: PeerId, associatedData: ChatMessageItemAssociatedData? = nil) -> Bool {
+        if let subject = associatedData?.subject, case .forwardedMessages = subject {
+            return false
+        }
         switch self {
-            case let .message(message, _, _, _):
+            case let .message(message, _, _, _, _):
                 return message.effectivelyIncoming(accountPeerId)
             case let .group(messages):
                 return messages[0].0.effectivelyIncoming(accountPeerId)
@@ -26,7 +29,7 @@ public enum ChatMessageItemContent: Sequence {
     
     var index: MessageIndex {
         switch self {
-            case let .message(message, _, _, _):
+            case let .message(message, _, _, _, _):
                 return message.index
             case let .group(messages):
                 return messages[0].0.index
@@ -35,7 +38,7 @@ public enum ChatMessageItemContent: Sequence {
     
     var firstMessage: Message {
         switch self {
-            case let .message(message, _, _, _):
+            case let .message(message, _, _, _, _):
                 return message
             case let .group(messages):
                 return messages[0].0
@@ -44,8 +47,8 @@ public enum ChatMessageItemContent: Sequence {
     
     var firstMessageAttributes: ChatMessageEntryAttributes {
         switch self {
-            case let .message(message):
-                return message.attributes
+            case let .message(_, _, _, attributes, _):
+                return attributes
             case let .group(messages):
                 return messages[0].3
         }
@@ -55,10 +58,10 @@ public enum ChatMessageItemContent: Sequence {
         var index = 0
         return AnyIterator { () -> (Message, ChatMessageEntryAttributes)? in
             switch self {
-                case let .message(message):
+                case let .message(message, _, _, attributes, _):
                     if index == 0 {
                         index += 1
-                        return (message.message, message.attributes)
+                        return (message, attributes)
                     } else {
                         index += 1
                         return nil
@@ -255,7 +258,6 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
     let effectiveAuthorId: PeerId?
     let additionalContent: ChatMessageItemAdditionalContent?
     
-    //public let accessoryItem: ListViewAccessoryItem?
     let dateHeader: ChatMessageDateHeader
     let avatarHeader: ChatMessageAvatarHeader?
 
@@ -263,7 +265,7 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
     
     var message: Message {
         switch self.content {
-            case let .message(message, _, _, _):
+            case let .message(message, _, _, _, _):
                 return message
             case let .group(messages):
                 return messages[0].0
@@ -272,7 +274,7 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
     
     var read: Bool {
         switch self.content {
-            case let .message(_, read, _, _):
+            case let .message(_, read, _, _, _):
                 return read
             case let .group(messages):
                 return messages[0].1
@@ -303,7 +305,7 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
                 if let forwardInfo = content.firstMessage.forwardInfo {
                     effectiveAuthor = forwardInfo.author
                     if effectiveAuthor == nil, let authorSignature = forwardInfo.authorSignature  {
-                        effectiveAuthor = TelegramUser(id: PeerId(namespace: Namespaces.Peer.Empty, id: PeerId.Id._internalFromInt32Value(Int32(clamping: authorSignature.persistentHashValue))), accessHash: nil, firstName: authorSignature, lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: UserInfoFlags())
+                        effectiveAuthor = TelegramUser(id: PeerId(namespace: Namespaces.Peer.Empty, id: PeerId.Id._internalFromInt64Value(Int64(authorSignature.persistentHashValue % 32))), accessHash: nil, firstName: authorSignature, lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: UserInfoFlags())
                     }
                 }
                 displayAuthorInfo = incoming && effectiveAuthor != nil
@@ -326,14 +328,14 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
             isScheduledMessages = true
         }
         
-        self.dateHeader = ChatMessageDateHeader(timestamp: content.index.timestamp, scheduled: isScheduledMessages, presentationData: presentationData, context: context, action: { timestamp in
+        self.dateHeader = ChatMessageDateHeader(timestamp: content.index.timestamp, scheduled: isScheduledMessages, presentationData: presentationData, context: context, action: { timestamp, alreadyThere in
             var calendar = NSCalendar.current
             calendar.timeZone = TimeZone(abbreviation: "UTC")!
             let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
             let components = calendar.dateComponents([.year, .month, .day], from: date)
 
             if let date = calendar.date(from: components) {
-                controllerInteraction.navigateToFirstDateMessage(Int32(date.timeIntervalSince1970))
+                controllerInteraction.navigateToFirstDateMessage(Int32(date.timeIntervalSince1970), alreadyThere)
             }
         })
         
@@ -362,8 +364,11 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
             }
         }
         self.avatarHeader = avatarHeader
-
+        
         var headers: [ListViewItemHeader] = [self.dateHeader]
+        if case .forwardedMessages = associatedData.subject {
+            headers = []
+        }
         if let avatarHeader = self.avatarHeader {
             headers.append(avatarHeader)
         }
@@ -428,7 +433,7 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
         }
         
         if viewClassName == ChatMessageBubbleItemNode.self && self.presentationData.largeEmoji && self.message.media.isEmpty {
-            if case let .message(_, _, _, attributes) = self.content {
+            if case let .message(_, _, _, attributes, _) = self.content {
                 switch attributes.contentTypeHint {
                     case .largeEmoji:
                         viewClassName = ChatMessageStickerItemNode.self
@@ -457,7 +462,7 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
             
             Queue.mainQueue().async {
                 completion(node, {
-                    return (nil, { _ in apply(.None, synchronousLoads) })
+                    return (nil, { _ in apply(.None, ListViewItemApply(isOnScreen: false), synchronousLoads) })
                 })
             }
         }
@@ -517,8 +522,8 @@ public final class ChatMessageItem: ListViewItem, CustomStringConvertible {
                     
                     let (layout, apply) = nodeLayout(self, params, top, bottom, dateAtBottom && !self.disableDate)
                     Queue.mainQueue().async {
-                        completion(layout, { _ in
-                            apply(animation, false)
+                        completion(layout, { info in
+                            apply(animation, info, false)
                             if let nodeValue = node() as? ChatMessageItemView {
                                 nodeValue.safeInsets = UIEdgeInsets(top: 0.0, left: params.leftInset, bottom: 0.0, right: params.rightInset)
                                 nodeValue.updateSelectionState(animated: false)

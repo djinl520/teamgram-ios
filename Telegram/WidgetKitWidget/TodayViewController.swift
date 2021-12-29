@@ -50,9 +50,7 @@ private func setupSharedLogger(rootPath: String, path: String) {
     }
 }
 
-private let accountAuxiliaryMethods = AccountAuxiliaryMethods(updatePeerChatInputState: { interfaceState, inputState -> PeerChatInterfaceState? in
-    return interfaceState
-}, fetchResource: { account, resource, ranges, _ in
+private let accountAuxiliaryMethods = AccountAuxiliaryMethods(fetchResource: { account, resource, ranges, _ in
     return nil
 }, fetchResourceMediaReferenceHash: { resource in
     return .single(nil)
@@ -173,7 +171,7 @@ private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderC
                 var mappedMessage: WidgetDataPeer.Message?
                 if let index = transaction.getTopPeerMessageIndex(peerId: peer.id) {
                     if let message = transaction.getMessage(index.id) {
-                        mappedMessage = WidgetDataPeer.Message(accountPeerId: state.peerId, message: message)
+                        mappedMessage = WidgetDataPeer.Message(accountPeerId: state.peerId, message: EngineMessage(message))
                     }
                 }
                 

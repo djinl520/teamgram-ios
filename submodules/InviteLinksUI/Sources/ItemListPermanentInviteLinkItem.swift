@@ -3,7 +3,6 @@ import UIKit
 import Display
 import AsyncDisplayKit
 import SwiftSignalKit
-import Postbox
 import AccountContext
 import TelegramPresentationData
 import ItemListUI
@@ -31,7 +30,7 @@ public class ItemListPermanentInviteLinkItem: ListViewItem, ItemListItem {
     let presentationData: ItemListPresentationData
     let invite: ExportedInvitation?
     let count: Int32
-    let peers: [Peer]
+    let peers: [EnginePeer]
     let displayButton: Bool
     let displayImporters: Bool
     let buttonColor: UIColor?
@@ -48,7 +47,7 @@ public class ItemListPermanentInviteLinkItem: ListViewItem, ItemListItem {
         presentationData: ItemListPresentationData,
         invite: ExportedInvitation?,
         count: Int32,
-        peers: [Peer],
+        peers: [EnginePeer],
         displayButton: Bool,
         displayImporters: Bool,
         buttonColor: UIColor?,
@@ -339,7 +338,7 @@ public class ItemListPermanentInviteLinkItemNode: ListViewItemNode, ItemListItem
             case .blocks:
                 itemBackgroundColor = item.presentationData.theme.list.itemBlocksBackgroundColor
                 itemSeparatorColor = item.presentationData.theme.list.itemBlocksSeparatorColor
-                insets = itemListNeighborsGroupedInsets(neighbors)
+                insets = itemListNeighborsGroupedInsets(neighbors, params)
             }
             
             if !item.displayImporters {

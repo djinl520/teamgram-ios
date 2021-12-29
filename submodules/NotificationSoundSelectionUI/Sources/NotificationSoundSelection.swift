@@ -2,7 +2,6 @@ import Foundation
 import UIKit
 import Display
 import SwiftSignalKit
-import Postbox
 import TelegramCore
 import AVFoundation
 import TelegramPresentationData
@@ -127,19 +126,19 @@ private enum NotificationSoundSelectionEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! NotificationSoundSelectionArguments
         switch self {
-            case let.modernHeader(theme, text):
+            case let.modernHeader(_, text):
                 return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-            case let .classicHeader(theme, text):
+            case let .classicHeader(_, text):
                 return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-            case let .none(_, theme, text, selected):
+            case let .none(_, _, text, selected):
                 return ItemListCheckboxItem(presentationData: presentationData, title: text, style: .left, checked: selected, zeroSeparatorInsets: true, sectionId: self.section, action: {
                     arguments.selectSound(.none)
                 })
-            case let .default(_, theme, text, selected):
+            case let .default(_, _, text, selected):
                 return ItemListCheckboxItem(presentationData: presentationData, title: text, style: .left, checked: selected, zeroSeparatorInsets: false, sectionId: self.section, action: {
                     arguments.selectSound(.default)
                 })
-            case let .sound(_, _, theme, text, sound, selected):
+            case let .sound(_, _, _, text, sound, selected):
                 return ItemListCheckboxItem(presentationData: presentationData, title: text, style: .left, checked: selected, zeroSeparatorInsets: false, sectionId: self.section, action: {
                     arguments.selectSound(sound)
                 })
@@ -258,7 +257,7 @@ public func playSound(context: AccountContext, sound: PeerMessageSound, defaultS
     }
 }
 
-public func notificationSoundSelectionController(context: AccountContext, isModal: Bool, currentSound: PeerMessageSound, defaultSound: PeerMessageSound?, completion: @escaping (PeerMessageSound) -> Void) -> ViewController {
+public func notificationSoundSelectionController(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, isModal: Bool, currentSound: PeerMessageSound, defaultSound: PeerMessageSound?, completion: @escaping (PeerMessageSound) -> Void) -> ViewController {
     let statePromise = ValuePromise(NotificationSoundSelectionState(selectedSound: currentSound), ignoreRepeated: true)
     let stateValue = Atomic(value: NotificationSoundSelectionState(selectedSound: currentSound))
     let updateState: ((NotificationSoundSelectionState) -> NotificationSoundSelectionState) -> Void = { f in
@@ -282,7 +281,8 @@ public func notificationSoundSelectionController(context: AccountContext, isModa
         cancelImpl?()
     })
     
-    let signal = combineLatest(context.sharedContext.presentationData, statePromise.get())
+    let presentationData = updatedPresentationData?.signal ?? context.sharedContext.presentationData
+    let signal = combineLatest(presentationData, statePromise.get())
     |> map { presentationData, state -> (ItemListControllerState, (ItemListNodeState, Any)) in
         
         let leftNavigationButton = ItemListNavigationButton(content: .text(presentationData.strings.Common_Cancel), style: .regular, enabled: true, action: {

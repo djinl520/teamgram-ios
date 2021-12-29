@@ -1,7 +1,6 @@
 import Foundation
 import UIKit
 import AsyncDisplayKit
-import Postbox
 import TelegramCore
 import Display
 import SwiftSignalKit
@@ -20,7 +19,7 @@ final class ChatListInputActivitiesNode: ASDisplayNode {
         self.addSubnode(self.activityNode)
     }
     
-    func asyncLayout() -> (CGSize, ChatListPresentationData, UIColor, PeerId, [(Peer, PeerInputActivity)]) -> (CGSize, () -> Void) {
+    func asyncLayout() -> (CGSize, ChatListPresentationData, UIColor, EnginePeer.Id, [(EnginePeer, PeerInputActivity)]) -> (CGSize, () -> Void) {
         return { [weak self] boundingSize, presentationData, color, peerId, activities in
             let strings = presentationData.strings
             
@@ -59,7 +58,11 @@ final class ChatListInputActivitiesNode: ASDisplayNode {
                                 text = strings.Activity_PlayingGame
                             case .typingText:
                                 text = strings.DialogList_Typing
-                            case .speakingInGroupCall:
+                            case .choosingSticker:
+                                text = strings.Activity_ChoosingSticker
+                            case let .interactingWithEmoji(emoticon, _, _):
+                                text = strings.Activity_TappingInteractiveEmoji(emoticon).string
+                            case .speakingInGroupCall, .seeingEmojiInteraction:
                                 text = ""
                         }
                         let string = NSAttributedString(string: text, font: textFont, textColor: color)
@@ -77,6 +80,12 @@ final class ChatListInputActivitiesNode: ASDisplayNode {
                                 state = .playingGame(string, lightColor)
                             case .speakingInGroupCall:
                                 state = .typingText(string, lightColor)
+                            case .choosingSticker:
+                                state = .choosingSticker(string, lightColor)
+                            case .interactingWithEmoji:
+                                state = .interactingWithEmoji(string, lightColor)
+                            case .seeingEmojiInteraction:
+                                state = .none
                         }
                     } else {
                         let text: String
@@ -99,7 +108,9 @@ final class ChatListInputActivitiesNode: ASDisplayNode {
                                     text = strings.DialogList_SinglePlayingGameSuffix(peerTitle).string
                                 case .typingText:
                                     text = strings.DialogList_SingleTypingSuffix(peerTitle).string
-                                case .speakingInGroupCall:
+                                case .choosingSticker:
+                                    text = strings.DialogList_SingleChoosingStickerSuffix(peerTitle).string
+                                case .speakingInGroupCall, .seeingEmojiInteraction, .interactingWithEmoji:
                                     text = ""
                             }
                         } else {
@@ -120,6 +131,10 @@ final class ChatListInputActivitiesNode: ASDisplayNode {
                                 state = .playingGame(string, lightColor)
                             case .speakingInGroupCall:
                                 state = .typingText(string, lightColor)
+                            case .choosingSticker:
+                                state = .choosingSticker(string, lightColor)
+                            case .seeingEmojiInteraction, .interactingWithEmoji:
+                                state = .none
                         }
                     }
                 } else {

@@ -221,27 +221,20 @@ final class SharedMediaPlayer {
                         if case .music = playbackData.type {
                             rateValue = 1.0
                         } else {
-                            switch strongSelf.playbackRate {
-                                case .x1:
-                                    rateValue = 1.0
-                                case .x2:
-                                    rateValue = 1.8
-                                default:
-                                    rateValue = 1.0
-                            }
+                            rateValue = strongSelf.playbackRate.doubleValue
                         }
                         
                         switch playbackData.type {
                             case .voice, .music:
                                 switch playbackData.source {
-                                    case let .telegramFile(fileReference):
+                                    case let .telegramFile(fileReference, _):
                                         strongSelf.playbackItem = .audio(MediaPlayer(audioSessionManager: strongSelf.audioSession, postbox: strongSelf.account.postbox, resourceReference: fileReference.resourceReference(fileReference.media.resource), streamable: playbackData.type == .music ? .conservative : .none, video: false, preferSoftwareDecoding: false, enableSound: true, baseRate: rateValue, fetchAutomatically: true, playAndRecord: controlPlaybackWithProximity))
                                 }
                             case .instantVideo:
                                 if let mediaManager = strongSelf.mediaManager, let item = item as? MessageMediaPlaylistItem {
                                     switch playbackData.source {
-                                        case let .telegramFile(fileReference):
-                                            let videoNode = OverlayInstantVideoNode(postbox: strongSelf.account.postbox, audioSession: strongSelf.audioSession, manager: mediaManager.universalVideoManager, content: NativeVideoContent(id: .message(item.message.stableId, fileReference.media.fileId), fileReference: fileReference, enableSound: false, baseRate: rateValue), close: { [weak mediaManager] in
+                                        case let .telegramFile(fileReference, _):
+                                            let videoNode = OverlayInstantVideoNode(postbox: strongSelf.account.postbox, audioSession: strongSelf.audioSession, manager: mediaManager.universalVideoManager, content: NativeVideoContent(id: .message(item.message.stableId, fileReference.media.fileId), fileReference: fileReference, enableSound: false, baseRate: rateValue, captureProtected: item.message.isCopyProtected()), close: { [weak mediaManager] in
                                                 mediaManager?.setPlaylist(nil, type: .voice, control: .playback(.pause))
                                             })
                                             strongSelf.playbackItem = .instantVideo(videoNode)
@@ -490,7 +483,7 @@ final class SharedMediaPlayer {
                 let fetchedCurrentSignal: Signal<Never, NoError>
                 let fetchedNextSignal: Signal<Never, NoError>
                 switch current {
-                    case let .telegramFile(file):
+                    case let .telegramFile(file, _):
                         fetchedCurrentSignal = self.account.postbox.mediaBox.resourceData(file.media.resource)
                         |> mapToSignal { data -> Signal<Void, NoError> in
                             if data.complete {
@@ -503,7 +496,7 @@ final class SharedMediaPlayer {
                         |> ignoreValues
                 }
                 switch next {
-                    case let .telegramFile(file):
+                    case let .telegramFile(file, _):
                         fetchedNextSignal = fetchedMediaResource(mediaBox: self.account.postbox.mediaBox, reference: file.resourceReference(file.media.resource))
                         |> ignoreValues
                         |> `catch` { _ -> Signal<Never, NoError> in

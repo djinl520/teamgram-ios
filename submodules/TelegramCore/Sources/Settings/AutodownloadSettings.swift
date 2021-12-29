@@ -4,16 +4,16 @@ import TelegramApi
 import SwiftSignalKit
 
 
-public func updateAutodownloadSettingsInteractively(accountManager: AccountManager, _ f: @escaping (AutodownloadSettings) -> AutodownloadSettings) -> Signal<Void, NoError> {
+public func updateAutodownloadSettingsInteractively(accountManager: AccountManager<TelegramAccountManagerTypes>, _ f: @escaping (AutodownloadSettings) -> AutodownloadSettings) -> Signal<Void, NoError> {
     return accountManager.transaction { transaction -> Void in
         transaction.updateSharedData(SharedDataKeys.autodownloadSettings, { entry in
             let currentSettings: AutodownloadSettings
-            if let entry = entry as? AutodownloadSettings {
+            if let entry = entry?.get(AutodownloadSettings.self) {
                 currentSettings = entry
             } else {
                 currentSettings = AutodownloadSettings.defaultSettings
             }
-            return f(currentSettings)
+            return PreferencesEntry(f(currentSettings))
         })
     }
 }

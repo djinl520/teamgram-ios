@@ -6,6 +6,9 @@ swift_library(
     srcs = glob([
         "Sources/**/*.swift",
     ]),
+    copts = [
+        "-warnings-as-errors",
+    ],
     deps = [
     	"//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
@@ -24,6 +27,7 @@ swift_library(
         "//submodules/AnimatedStickerNode:AnimatedStickerNode",
         "//submodules/TelegramAnimatedStickerNode:TelegramAnimatedStickerNode",
         "//submodules/StickerResources:StickerResources",
+        "//submodules/TextFormat:TextFormat",
     ],
     visibility = [
         "//visibility:public",

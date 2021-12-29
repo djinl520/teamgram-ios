@@ -39,6 +39,10 @@ public final class TelegramEngine {
     public lazy var localization: Localization = {
         return Localization(account: self.account)
     }()
+    
+    public lazy var themes: Themes = {
+        return Themes(account: self.account)
+    }()
 
     public lazy var messages: Messages = {
         return Messages(account: self.account)
@@ -70,6 +74,10 @@ public final class TelegramEngine {
 
     public lazy var data: EngineData = {
         return EngineData(account: self.account)
+    }()
+
+    public lazy var orderedLists: OrderedLists = {
+        return OrderedLists(account: self.account)
     }()
 }
 

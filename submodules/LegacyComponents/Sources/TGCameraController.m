@@ -454,8 +454,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     if (_intent != TGCameraControllerGenericIntent && _intent != TGCameraControllerAvatarIntent)
         [_interfaceView setHasModeControl:false];
 
-    if (iosMajorVersion() >= 11)
-    {
+    if (@available(iOS 11.0, *)) {
         _backgroundView.accessibilityIgnoresInvertColors = true;
         _interfaceView.accessibilityIgnoresInvertColors = true;
         _focusControl.accessibilityIgnoresInvertColors = true;
@@ -675,7 +674,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
             });
         }];
         
-        if (iosMajorVersion() >= 13.0) {
+        if (@available(iOS 13.0, *)) {
             [strongSelf->_feedbackGenerator impactOccurredWithIntensity:0.5];
         } else {
             [strongSelf->_feedbackGenerator impactOccurred];
@@ -1020,7 +1019,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
 
 - (void)shutterPressed
 {
-    if (iosMajorVersion() >= 13.0) {
+    if (@available(iOS 13.0, *)) {
         [_feedbackGenerator impactOccurredWithIntensity:0.5];
     } else {
         [_feedbackGenerator impactOccurred];
@@ -1060,7 +1059,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
 
 - (void)shutterReleased
 {
-    if (iosMajorVersion() >= 13.0) {
+    if (@available(iOS 13.0, *)) {
         [_feedbackGenerator impactOccurredWithIntensity:0.6];
     } else {
         [_feedbackGenerator impactOccurred];
@@ -1102,7 +1101,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
             __strong TGCameraController *strongSelf = weakSelf;
             if (strongSelf == nil)
                 return;
-            
+        
             TGDispatchOnMainThread(^
             {
                 strongSelf->_shutterIsBusy = false;
@@ -1120,6 +1119,10 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
                         strongSelf->_camera.disabled = false;
                 }
             });
+            
+            [[SQueue concurrentDefaultQueue] dispatch:^{
+                [TGCameraController generateStartImageWithImage:result];
+            }];
         }];
     }
     else if (cameraMode == PGCameraModeVideo || cameraMode == PGCameraModeSquareVideo || cameraMode == PGCameraModeSquareSwing)
@@ -1436,7 +1439,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     {
         editingContext = [[TGMediaEditingContext alloc] init];
         if (self.forcedCaption != nil)
-            [editingContext setForcedCaption:self.forcedCaption entities:self.forcedEntities];
+            [editingContext setForcedCaption:self.forcedCaption];
         _editingContext = editingContext;
         _interfaceView.editingContext = editingContext;
     }
@@ -1708,11 +1711,11 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
             [editingContext setImage:resultImage thumbnailImage:thumbnailImage forItem:editableItem synchronous:false];
         };
 
-        model.saveItemCaption = ^(id<TGMediaEditableItem> editableItem, NSString *caption, NSArray *entities)
+        model.saveItemCaption = ^(id<TGMediaEditableItem> editableItem, NSAttributedString *caption)
         {
             __strong TGCameraController *strongSelf = weakSelf;
             if (strongSelf != nil)
-                [strongSelf->_editingContext setCaption:caption entities:entities forItem:editableItem];
+                [strongSelf->_editingContext setCaption:caption forItem:editableItem];
         };
 
         model.interfaceView.hasSwipeGesture = false;
@@ -2045,10 +2048,10 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
                 }
                 
                 if (strongSelf.finishedWithVideo != nil)
-                    strongSelf.finishedWithVideo(nil, [NSURL fileURLWithPath:filePath], previewImage, 0, CGSizeZero, adjustments, nil, nil, nil, nil);
+                    strongSelf.finishedWithVideo(nil, [NSURL fileURLWithPath:filePath], previewImage, 0, CGSizeZero, adjustments, nil, nil, nil);
             } else {
                 if (strongSelf.finishedWithPhoto != nil)
-                    strongSelf.finishedWithPhoto(nil, resultImage, nil, nil, nil, nil);
+                    strongSelf.finishedWithPhoto(nil, resultImage, nil, nil, nil);
             }
                         
             if (strongSelf.shouldStoreCapturedAssets && [input isKindOfClass:[UIImage class]])
@@ -2076,7 +2079,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
         TGDispatchOnMainThread(^
         {
             if (strongSelf.finishedWithVideo != nil)
-                strongSelf.finishedWithVideo(nil, [(AVURLAsset *)asset URL], resultImage, 0, CGSizeZero, adjustments, nil, nil, nil, nil);
+                strongSelf.finishedWithVideo(nil, [(AVURLAsset *)asset URL], resultImage, 0, CGSizeZero, adjustments, nil, nil, nil);
         
             __strong TGPhotoEditorController *strongController = weakController;
             if (strongController != nil)
@@ -2246,10 +2249,20 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     _interfaceView.previewViewFrame = toFrame;
 }
 
++ (void)generateStartImageWithImage:(UIImage *)frameImage {
+    CGFloat minSize = MIN(frameImage.size.width, frameImage.size.height);
+    UIImage *image = TGPhotoEditorCrop(frameImage, nil, UIImageOrientationUp, 0.0f, CGRectMake((frameImage.size.width - minSize) / 2.0f, (frameImage.size.height - minSize) / 2.0f, minSize, minSize), false, CGSizeMake(240.0f, 240.0f), frameImage.size, true);
+    UIImage *startImage = TGSecretBlurredAttachmentImage(image, image.size, NULL, false, 0);
+    TGDispatchOnMainThread(^{
+        [TGCameraController saveStartImage:startImage];
+    });
+}
+
 - (void)beginTransitionOutWithVelocity:(CGFloat)velocity
 {
     _dismissing = true;
     self.view.userInteractionEnabled = false;
+    
     
     _focusControl.active = false;
     _rectangleView.hidden = true;
@@ -2267,6 +2280,11 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
         referenceFrame = self.beginTransitionOut();
     
     __weak TGCameraController *weakSelf = self;
+    [_camera captureNextFrameCompletion:^(UIImage *frameImage) {
+        [[SQueue concurrentDefaultQueue] dispatch:^{
+            [TGCameraController generateStartImageWithImage:frameImage];
+        }];
+    }];
     if (_standalone)
     {
         [self simpleTransitionOutWithVelocity:velocity completion:^
@@ -2340,21 +2358,6 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     self.view.hidden = true;
     
     [resultController.view.layer animatePositionFrom:resultController.view.layer.position to:CGPointMake(resultController.view.layer.position.x, resultController.view.layer.position.y + resultController.view.bounds.size.height) duration:0.3 timingFunction:kCAMediaTimingFunctionSpring removeOnCompletion:false completion:^(__unused bool finished) {
-        if (resultController.customDismissSelf) {
-            resultController.customDismissSelf();
-        } else {
-            [resultController dismiss];
-        }
-        [self dismiss];
-    }];
-    
-    return;
-    
-    [UIView animateWithDuration:0.3 delay:0.0f options:(7 << 16) animations:^
-    {
-        resultController.view.frame = CGRectOffset(resultController.view.frame, 0, resultController.view.frame.size.height);
-    } completion:^(__unused BOOL finished)
-    {
         if (resultController.customDismissSelf) {
             resultController.customDismissSelf();
         } else {
@@ -2757,12 +2760,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     }
 }
 
-+ (bool)useLegacyCamera
-{
-    return false;
-}
-
-+ (NSArray *)resultSignalsForSelectionContext:(TGMediaSelectionContext *)selectionContext editingContext:(TGMediaEditingContext *)editingContext currentItem:(id<TGMediaSelectableItem>)currentItem storeAssets:(bool)storeAssets saveEditedPhotos:(bool)saveEditedPhotos descriptionGenerator:(id (^)(id, NSString *, NSArray *, NSString *))descriptionGenerator
++ (NSArray *)resultSignalsForSelectionContext:(TGMediaSelectionContext *)selectionContext editingContext:(TGMediaEditingContext *)editingContext currentItem:(id<TGMediaSelectableItem>)currentItem storeAssets:(bool)storeAssets saveEditedPhotos:(bool)saveEditedPhotos descriptionGenerator:(id (^)(id, NSAttributedString *, NSString *))descriptionGenerator
 {
     NSMutableArray *signals = [[NSMutableArray alloc] init];
     NSMutableArray *selectedItems = selectionContext.selectedItems != nil ? [selectionContext.selectedItems mutableCopy] : [[NSMutableArray alloc] init];
@@ -2889,8 +2887,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     {
         if ([asset isKindOfClass:[TGCameraCapturedPhoto class]])
         {
-            NSString *caption = [editingContext captionForItem:asset];
-            NSArray *entities = [editingContext entitiesForItem:asset];
+            NSAttributedString *caption = [editingContext captionForItem:asset];
             id<TGMediaEditAdjustments> adjustments = [editingContext adjustmentsForItem:asset];
             NSNumber *timer = [editingContext timerForItem:asset];
 
@@ -2910,7 +2907,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
                         dict[@"caption"] = caption;
                     return dict;
                 } else {
-                    id generatedItem = descriptionGenerator(dict, caption, entities, nil);
+                    id generatedItem = descriptionGenerator(dict, caption, nil);
                     return generatedItem;
                 }
             }];
@@ -2996,7 +2993,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
                         dict[@"caption"] = caption;
                     return dict;
                 } else {
-                    id generatedItem = descriptionGenerator(dict, caption, entities, nil);
+                    id generatedItem = descriptionGenerator(dict, caption, nil);
                     return generatedItem;
                 }
             }] catch:^SSignal *(__unused id error)
@@ -3013,8 +3010,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
             TGCameraCapturedVideo *video = (TGCameraCapturedVideo *)asset;
             
             TGVideoEditAdjustments *adjustments = (TGVideoEditAdjustments *)[editingContext adjustmentsForItem:asset];
-            NSString *caption = [editingContext captionForItem:asset];
-            NSArray *entities = [editingContext entitiesForItem:asset];
+            NSAttributedString *caption = [editingContext captionForItem:asset];
             NSNumber *timer = [editingContext timerForItem:asset];
             
             UIImage *(^cropVideoThumbnail)(UIImage *, CGSize, CGSize, bool) = ^UIImage *(UIImage *image, CGSize targetSize, CGSize sourceSize, bool resize)
@@ -3072,7 +3068,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
                     else if (groupedId != nil && !hasAnyTimers)
                         dict[@"groupedId"] = groupedId;
                     
-                    id generatedItem = descriptionGenerator(dict, caption, entities, nil);
+                    id generatedItem = descriptionGenerator(dict, caption, nil);
                     return generatedItem;
                 }];
             }]];
@@ -3128,7 +3124,7 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
             dict[@"fileName"] = @"Document Scan.pdf";
             dict[@"mimeType"] = @"application/pdf";
             
-            id generatedItem = descriptionGenerator(dict, dict[@"caption"], nil, nil);
+            id generatedItem = descriptionGenerator(dict, dict[@"caption"], nil);
             return generatedItem;
         }];
         signals = [NSMutableArray arrayWithObject:scanSignal];
@@ -3142,6 +3138,26 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
     int64_t value;
     arc4random_buf(&value, sizeof(int64_t));
     return value;
+}
+
+#pragma mark - Start Image
+
+static UIImage *startImage = nil;
+
++ (UIImage *)startImage
+{
+    if (startImage == nil)
+        startImage = TGComponentsImageNamed (@"CameraPlaceholder.jpg");
+    
+    return startImage;
+}
+
++ (void)saveStartImage:(UIImage *)image
+{
+    if (image == nil)
+        return;
+    
+    startImage = image;
 }
 
 @end

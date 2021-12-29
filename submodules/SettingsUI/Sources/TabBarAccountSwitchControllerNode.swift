@@ -131,7 +131,7 @@ private final class SwitchAccountItemNode: ASDisplayNode, AbstractSwitchAccountI
         
         self.titleNode = ImmediateTextNode()
         self.titleNode.maximumNumberOfLines = 1
-        self.titleNode.attributedText = NSAttributedString(string: peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), font: Font.regular(17.0), textColor: presentationData.theme.actionSheet.primaryTextColor)
+        self.titleNode.attributedText = NSAttributedString(string: EnginePeer(peer).displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), font: Font.regular(17.0), textColor: presentationData.theme.actionSheet.primaryTextColor)
         
         self.checkNode = ASImageNode()
         self.checkNode.image = generateItemListCheckIcon(color: presentationData.theme.actionSheet.primaryTextColor)
@@ -189,7 +189,7 @@ private final class SwitchAccountItemNode: ASDisplayNode, AbstractSwitchAccountI
         return (titleSize.width + leftInset + rightInset, height, { width in
             let avatarSize = CGSize(width: 30.0, height: 30.0)
             self.avatarNode.frame = CGRect(origin: CGPoint(x: floor((leftInset - avatarSize.width) / 2.0), y: floor((height - avatarSize.height) / 2.0)), size: avatarSize)
-            self.avatarNode.setPeer(context: self.context, theme: self.presentationData.theme, peer: self.peer)
+            self.avatarNode.setPeer(context: self.context, theme: self.presentationData.theme, peer: EnginePeer(self.peer))
             
             self.titleNode.frame = CGRect(origin: CGPoint(x: leftInset, y: floor((height - titleSize.height) / 2.0)), size: titleSize)
             

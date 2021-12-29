@@ -6,11 +6,15 @@ swift_library(
     srcs = glob([
         "Sources/**/*.swift",
     ]),
+    copts = [
+        "-warnings-as-errors",
+    ],
     deps = [
     	"//submodules/Postbox:Postbox",
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/StickerResources:StickerResources",
         "//submodules/MediaResources:MediaResources",
+        "//submodules/LocalMediaResources:LocalMediaResources",
         "//submodules/Tuples:Tuples",
         "//submodules/AnimatedStickerNode:AnimatedStickerNode",
         "//submodules/rlottie:RLottieBinding",

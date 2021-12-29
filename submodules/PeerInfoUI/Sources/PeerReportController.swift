@@ -92,9 +92,7 @@ public func presentPeerReportOptions(context: AccountContext, parent: ViewContro
                 }
                 
                 let displaySuccess = {
-                    if let path = getAppBundle().path(forResource: "PoliceCar", ofType: "tgs") {
-                        parent?.present(UndoOverlayController(presentationData: presentationData, content: .emoji(path: path, text: presentationData.strings.Report_Succeed), elevatedLayout: false, action: { _ in return false }), in: .current)
-                    }
+                    parent?.present(UndoOverlayController(presentationData: presentationData, content: .emoji(name: "PoliceCar", text: presentationData.strings.Report_Succeed), elevatedLayout: false, action: { _ in return false }), in: .current)
                 }
                 
                 if passthrough {
@@ -117,7 +115,7 @@ public func presentPeerReportOptions(context: AccountContext, parent: ViewContro
                                         displaySuccess()
                                         completion(nil, false)
                                     })
-                                case let .profilePhoto(peerId, photoId):
+                                case let .profilePhoto(peerId, _):
                                     let _ = (context.engine.peers.reportPeerPhoto(peerId: peerId, reason: reportReason, message: "")
                                     |> deliverOnMainQueue).start(completed: {
                                         displaySuccess()
@@ -160,7 +158,7 @@ public func presentPeerReportOptions(context: AccountContext, parent: ViewContro
                 backAction(c)
             })))
         }
-        contextController.setItems(.single(items))
+        contextController.setItems(.single(ContextController.Items(items: items)), minHeight: nil)
     } else {
         contextController?.dismiss(completion: nil)
         parent.view.endEditing(true)
@@ -221,9 +219,7 @@ public func peerReportOptionsController(context: AccountContext, subject: PeerRe
                 }
                 
                 let displaySuccess = {
-                    if let path = getAppBundle().path(forResource: "PoliceCar", ofType: "tgs") {
-                        present(UndoOverlayController(presentationData: presentationData, content: .emoji(path: path, text: presentationData.strings.Report_Succeed), elevatedLayout: false, action: { _ in return false }), nil)
-                    }
+                    present(UndoOverlayController(presentationData: presentationData, content: .emoji(name: "PoliceCar", text: presentationData.strings.Report_Succeed), elevatedLayout: false, action: { _ in return false }), nil)
                 }
                 
                 let action: (String) -> Void = { message in
@@ -243,7 +239,7 @@ public func peerReportOptionsController(context: AccountContext, subject: PeerRe
                                     displaySuccess()
                                     completion(nil, true)
                                 })
-                            case let .profilePhoto(peerId, photoId):
+                            case let .profilePhoto(peerId, _):
                                 let _ = (context.engine.peers.reportPeerPhoto(peerId: peerId, reason: reportReason, message: message)
                                 |> deliverOnMainQueue).start(completed: {
                                     displaySuccess()

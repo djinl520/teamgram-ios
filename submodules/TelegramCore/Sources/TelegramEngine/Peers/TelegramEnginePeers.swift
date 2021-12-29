@@ -8,7 +8,30 @@ public enum AddressNameValidationStatus: Equatable {
     case availability(AddressNameAvailability)
 }
 
+public final class OpaqueChatInterfaceState {
+    public let opaqueData: Data?
+    public let historyScrollMessageIndex: MessageIndex?
+    public let synchronizeableInputState: SynchronizeableChatInputState?
+
+    public init(
+        opaqueData: Data?,
+        historyScrollMessageIndex: MessageIndex?,
+        synchronizeableInputState: SynchronizeableChatInputState?
+    ) {
+        self.opaqueData = opaqueData
+        self.historyScrollMessageIndex = historyScrollMessageIndex
+        self.synchronizeableInputState = synchronizeableInputState
+    }
+}
+
 public extension TelegramEngine {
+    enum NextUnreadChannelLocation: Equatable {
+        case same
+        case archived
+        case unarchived
+        case folder(id: Int32, title: String)
+    }
+
     final class Peers {
         private let account: Account
 
@@ -51,7 +74,7 @@ public extension TelegramEngine {
             }
         }
 
-        public func findChannelById(channelId: Int32) -> Signal<Peer?, NoError> {
+        public func findChannelById(channelId: Int64) -> Signal<Peer?, NoError> {
             return _internal_findChannelById(postbox: self.account.postbox, network: self.account.network, channelId: channelId)
         }
 
@@ -73,10 +96,6 @@ public extension TelegramEngine {
                     return transaction.getPeer(peerId).flatMap(EnginePeer.init)
                 }
             }
-        }
-
-        public func searchPeers(query: String) -> Signal<([FoundPeer], [FoundPeer]), NoError> {
-            return _internal_searchPeers(account: self.account, query: query)
         }
 
         public func updatedRemotePeer(peer: PeerReference) -> Signal<Peer, UpdatedRemotePeerError> {
@@ -192,7 +211,7 @@ public extension TelegramEngine {
             return _internal_updateChannelHistoryAvailabilitySettingsInteractively(postbox: self.account.postbox, network: self.account.network, accountStateManager: self.account.stateManager, peerId: peerId, historyAvailableForNewMembers: historyAvailableForNewMembers)
         }
 
-        public func channelMembers(peerId: PeerId, category: ChannelMembersCategory = .recent(.all), offset: Int32 = 0, limit: Int32 = 64, hash: Int32 = 0) -> Signal<[RenderedChannelParticipant]?, NoError> {
+        public func channelMembers(peerId: PeerId, category: ChannelMembersCategory = .recent(.all), offset: Int32 = 0, limit: Int32 = 64, hash: Int64 = 0) -> Signal<[RenderedChannelParticipant]?, NoError> {
             return _internal_channelMembers(postbox: self.account.postbox, network: self.account.network, accountPeerId: self.account.peerId, peerId: peerId, category: category, offset: offset, limit: limit, hash: hash)
         }
 
@@ -210,6 +229,10 @@ public extension TelegramEngine {
 
         public func toggleShouldChannelMessagesSignatures(peerId: PeerId, enabled: Bool) -> Signal<Void, NoError> {
             return _internal_toggleShouldChannelMessagesSignatures(account: self.account, peerId: peerId, enabled: enabled)
+        }
+
+        public func toggleMessageCopyProtection(peerId: PeerId, enabled: Bool) -> Signal<Void, NoError> {
+            return _internal_toggleMessageCopyProtection(account: self.account, peerId: peerId, enabled: enabled)
         }
 
         public func requestPeerPhotos(peerId: PeerId) -> Signal<[TelegramPeerPhoto], NoError> {
@@ -400,12 +423,12 @@ public extension TelegramEngine {
             return _internal_checkPeerChatServiceActions(postbox: self.account.postbox, peerId: peerId)
         }
 
-        public func createPeerExportedInvitation(peerId: PeerId, expireDate: Int32?, usageLimit: Int32?) -> Signal<ExportedInvitation?, CreatePeerExportedInvitationError> {
-            return _internal_createPeerExportedInvitation(account: self.account, peerId: peerId, expireDate: expireDate, usageLimit: usageLimit)
+        public func createPeerExportedInvitation(peerId: PeerId, title: String?, expireDate: Int32?, usageLimit: Int32?, requestNeeded: Bool?) -> Signal<ExportedInvitation?, CreatePeerExportedInvitationError> {
+            return _internal_createPeerExportedInvitation(account: self.account, peerId: peerId, title: title, expireDate: expireDate, usageLimit: usageLimit, requestNeeded: requestNeeded)
         }
 
-        public func editPeerExportedInvitation(peerId: PeerId, link: String, expireDate: Int32?, usageLimit: Int32?) -> Signal<ExportedInvitation?, EditPeerExportedInvitationError> {
-            return _internal_editPeerExportedInvitation(account: self.account, peerId: peerId, link: link, expireDate: expireDate, usageLimit: usageLimit)
+        public func editPeerExportedInvitation(peerId: PeerId, link: String, title: String?, expireDate: Int32?, usageLimit: Int32?, requestNeeded: Bool?) -> Signal<ExportedInvitation?, EditPeerExportedInvitationError> {
+            return _internal_editPeerExportedInvitation(account: self.account, peerId: peerId, link: link, title: title, expireDate: expireDate, usageLimit: usageLimit, requestNeeded: requestNeeded)
         }
 
         public func revokePeerExportedInvitation(peerId: PeerId, link: String) -> Signal<RevokeExportedInvitationResult?, RevokePeerExportedInvitationError> {
@@ -435,8 +458,8 @@ public extension TelegramEngine {
             return _internal_revokePersistentPeerExportedInvitation(account: self.account, peerId: peerId)
         }
 
-        public func peerInvitationImporters(peerId: PeerId, invite: ExportedInvitation) -> PeerInvitationImportersContext {
-            return PeerInvitationImportersContext(account: self.account, peerId: peerId, invite: invite)
+        public func peerInvitationImporters(peerId: PeerId, subject: PeerInvitationImportersContext.Subject) -> PeerInvitationImportersContext {
+            return PeerInvitationImportersContext(account: self.account, peerId: peerId, subject: subject)
         }
 
         public func notificationExceptionsList() -> Signal<NotificationExceptionsList, NoError> {
@@ -467,7 +490,7 @@ public extension TelegramEngine {
             return _internal_joinChatInteractively(with: hash, account: self.account)
         }
 
-        public func joinLinkInformation(_ hash: String) -> Signal<ExternalJoiningChatState, NoError> {
+        public func joinLinkInformation(_ hash: String) -> Signal<ExternalJoiningChatState, JoinLinkInfoError> {
             return _internal_joinLinkInformation(hash, account: self.account)
         }
 
@@ -478,5 +501,186 @@ public extension TelegramEngine {
         public func updatePeerDescription(peerId: PeerId, description: String?) -> Signal<Void, UpdatePeerDescriptionError> {
             return _internal_updatePeerDescription(account: self.account, peerId: peerId, description: description)
         }
+
+        public func getNextUnreadChannel(peerId: PeerId, chatListFilterId: Int32?, getFilterPredicate: @escaping (ChatListFilterData) -> ChatListFilterPredicate) -> Signal<(peer: EnginePeer, unreadCount: Int, location: NextUnreadChannelLocation)?, NoError> {
+            return self.account.postbox.transaction { transaction -> (peer: EnginePeer, unreadCount: Int, location: NextUnreadChannelLocation)? in
+                func getForFilter(predicate: ChatListFilterPredicate?, isArchived: Bool) -> (peer: EnginePeer, unreadCount: Int)? {
+                    var peerIds: [PeerId] = []
+                    if predicate != nil {
+                        peerIds.append(contentsOf: transaction.getUnreadChatListPeerIds(groupId: .root, filterPredicate: predicate))
+                        peerIds.append(contentsOf: transaction.getUnreadChatListPeerIds(groupId: Namespaces.PeerGroup.archive, filterPredicate: predicate))
+                    } else {
+                        if isArchived {
+                            peerIds.append(contentsOf: transaction.getUnreadChatListPeerIds(groupId: Namespaces.PeerGroup.archive, filterPredicate: nil))
+                        } else {
+                            peerIds.append(contentsOf: transaction.getUnreadChatListPeerIds(groupId: .root, filterPredicate: nil))
+                        }
+                    }
+
+                    var results: [(EnginePeer, PeerGroupId, ChatListIndex)] = []
+
+                    for listId in peerIds {
+                        guard let peer = transaction.getPeer(listId) else {
+                            continue
+                        }
+                        guard let channel = peer as? TelegramChannel, case .broadcast = channel.info else {
+                            continue
+                        }
+                        if channel.id == peerId {
+                            continue
+                        }
+                        guard let readState = transaction.getCombinedPeerReadState(channel.id), readState.count != 0 else {
+                            continue
+                        }
+                        guard let (groupId, index) = transaction.getPeerChatListIndex(channel.id) else {
+                            continue
+                        }
+
+                        results.append((EnginePeer(channel), groupId, index))
+                    }
+
+                    results.sort(by: { $0.2 > $1.2 })
+
+                    if let peer = results.first?.0 {
+                        let unreadCount: Int32 = transaction.getCombinedPeerReadState(peer.id)?.count ?? 0
+                        return (peer: peer, unreadCount: Int(unreadCount))
+                    } else {
+                        return nil
+                    }
+                }
+
+                let peerGroupId: PeerGroupId
+                if let peerGroupIdValue = transaction.getPeerChatListIndex(peerId)?.0 {
+                    peerGroupId = peerGroupIdValue
+                } else {
+                    peerGroupId = .root
+                }
+
+                if let filterId = chatListFilterId {
+                    let filters = _internal_currentChatListFilters(transaction: transaction)
+                    guard let index = filters.firstIndex(where: { $0.id == filterId }) else {
+                        return nil
+                    }
+                    var sortedFilters: [ChatListFilter] = []
+                    sortedFilters.append(contentsOf: filters[index...])
+                    sortedFilters.append(contentsOf: filters[0 ..< index])
+                    for i in 0 ..< sortedFilters.count {
+                        if let value = getForFilter(predicate: getFilterPredicate(sortedFilters[i].data), isArchived: false) {
+                            return (peer: value.peer, unreadCount: value.unreadCount, location: i == 0 ? .same : .folder(id: sortedFilters[i].id, title: sortedFilters[i].title))
+                        }
+                    }
+                    return nil
+                } else {
+                    let folderOrder: [(PeerGroupId, NextUnreadChannelLocation)]
+                    if peerGroupId == .root {
+                        folderOrder = [
+                            (.root, .same),
+                            (Namespaces.PeerGroup.archive, .archived),
+                        ]
+                    } else {
+                        folderOrder = [
+                            (Namespaces.PeerGroup.archive, .same),
+                            (.root, .unarchived),
+                        ]
+                    }
+
+                    for (groupId, location) in folderOrder {
+                        if let value = getForFilter(predicate: nil, isArchived: groupId != .root) {
+                            return (peer: value.peer, unreadCount: value.unreadCount, location: location)
+                        }
+                    }
+                    return nil
+                }
+            }
+        }
+
+        public func getOpaqueChatInterfaceState(peerId: PeerId, threadId: Int64?) -> Signal<OpaqueChatInterfaceState?, NoError> {
+            return self.account.postbox.transaction { transaction -> OpaqueChatInterfaceState? in
+                let storedState: StoredPeerChatInterfaceState?
+                if let threadId = threadId {
+                    storedState = transaction.getPeerChatThreadInterfaceState(peerId, threadId: threadId)
+                } else {
+                    storedState = transaction.getPeerChatInterfaceState(peerId)
+                }
+
+                guard let state = storedState, let data = state.data else {
+                    return nil
+                }
+                guard let internalState = try? AdaptedPostboxDecoder().decode(InternalChatInterfaceState.self, from: data) else {
+                    return nil
+                }
+                return OpaqueChatInterfaceState(
+                    opaqueData: internalState.opaqueData,
+                    historyScrollMessageIndex: internalState.historyScrollMessageIndex,
+                    synchronizeableInputState: internalState.synchronizeableInputState
+                )
+            }
+        }
+
+        public func setOpaqueChatInterfaceState(peerId: PeerId, threadId: Int64?, state: OpaqueChatInterfaceState) -> Signal<Never, NoError> {
+            return self.account.postbox.transaction { transaction -> Void in
+                guard let data = try? AdaptedPostboxEncoder().encode(InternalChatInterfaceState(
+                    synchronizeableInputState: state.synchronizeableInputState,
+                    historyScrollMessageIndex: state.historyScrollMessageIndex,
+                    opaqueData: state.opaqueData
+                )) else {
+                    return
+                }
+
+                #if DEBUG
+                let _ = try! AdaptedPostboxDecoder().decode(InternalChatInterfaceState.self, from: data)
+                #endif
+
+                let storedState = StoredPeerChatInterfaceState(
+                    overrideChatTimestamp: state.synchronizeableInputState?.timestamp,
+                    historyScrollMessageIndex: state.historyScrollMessageIndex,
+                    associatedMessageIds: (state.synchronizeableInputState?.replyToMessageId).flatMap({ [$0] }) ?? [],
+                    data: data
+                )
+
+                if let threadId = threadId {
+                    transaction.setPeerChatThreadInterfaceState(peerId, threadId: threadId, state: storedState)
+                } else {
+                    var currentInputState: SynchronizeableChatInputState?
+                    if let peerChatInterfaceState = transaction.getPeerChatInterfaceState(peerId), let data = peerChatInterfaceState.data {
+                        currentInputState = (try? AdaptedPostboxDecoder().decode(InternalChatInterfaceState.self, from: data))?.synchronizeableInputState
+                    }
+                    let updatedInputState = state.synchronizeableInputState
+
+                    if currentInputState != updatedInputState {
+                        if peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudChannel || peerId.namespace == Namespaces.Peer.CloudGroup {
+                            addSynchronizeChatInputStateOperation(transaction: transaction, peerId: peerId)
+                        }
+                    }
+                    transaction.setPeerChatInterfaceState(
+                        peerId,
+                        state: storedState
+                    )
+                }
+            }
+            |> ignoreValues
+        }
+        
+        public func sendAsAvailablePeers(peerId: PeerId) -> Signal<[FoundPeer], NoError> {
+            return _internal_cachedPeerSendAsAvailablePeers(account: self.account, peerId: peerId)
+        }
+        
+        public func updatePeerSendAsPeer(peerId: PeerId, sendAs: PeerId) -> Signal<Never, UpdatePeerSendAsPeerError> {
+            return _internal_updatePeerSendAsPeer(account: self.account, peerId: peerId, sendAs: sendAs)
+        }
     }
+}
+
+public func _internal_decodeStoredChatInterfaceState(state: StoredPeerChatInterfaceState) -> OpaqueChatInterfaceState? {
+    guard let data = state.data else {
+        return nil
+    }
+    guard let internalState = try? AdaptedPostboxDecoder().decode(InternalChatInterfaceState.self, from: data) else {
+        return nil
+    }
+    return OpaqueChatInterfaceState(
+        opaqueData: internalState.opaqueData,
+        historyScrollMessageIndex: internalState.historyScrollMessageIndex,
+        synchronizeableInputState: internalState.synchronizeableInputState
+    )
 }

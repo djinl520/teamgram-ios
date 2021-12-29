@@ -6,6 +6,9 @@ swift_library(
     srcs = glob([
 		"Sources/**/*.swift",
     ]),
+    copts = [
+        "-warnings-as-errors",
+    ],
     deps = [
         "//submodules/Postbox:Postbox",
         "//submodules/TelegramCore:TelegramCore",
@@ -14,8 +17,11 @@ swift_library(
         "//submodules/AnimatedStickerNode:AnimatedStickerNode",
         "//submodules/TelegramAnimatedStickerNode:TelegramAnimatedStickerNode",
         "//submodules/TelegramPresentationData:TelegramPresentationData",
+        "//submodules/StickerResources:StickerResources",
+        "//submodules/AccountContext:AccountContext",
     ],
     visibility = [
         "//visibility:public",
     ],
 )
+

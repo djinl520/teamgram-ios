@@ -119,7 +119,7 @@ private func collectExternalShareItems(strings: PresentationStrings, dateTimeFor
     authorsPromise.set(postbox.transaction { transaction in
         var result: [PeerId: String] = [:]
         for peerId in authorsPeerIds {
-            if let title = transaction.getPeer(peerId)?.displayTitle(strings: strings, displayOrder: nameOrder) {
+            if let title = transaction.getPeer(peerId).flatMap(EnginePeer.init)?.displayTitle(strings: strings, displayOrder: nameOrder) {
                 result[peerId] = title
             }
         }
@@ -329,11 +329,11 @@ public final class ShareController: ViewController {
 
     public var debugAction: (() -> Void)?
     
-    public convenience init(context: AccountContext, subject: ShareControllerSubject, presetText: String? = nil, preferredAction: ShareControllerPreferredAction = .default, showInChat: ((Message) -> Void)? = nil, fromForeignApp: Bool = false, segmentedValues: [ShareControllerSegmentedValue]? = nil, externalShare: Bool = true, immediateExternalShare: Bool = false, switchableAccounts: [AccountWithInfo] = [], immediatePeerId: PeerId? = nil, forceTheme: PresentationTheme? = nil, forcedActionTitle: String? = nil) {
-        self.init(sharedContext: context.sharedContext, currentContext: context, subject: subject, presetText: presetText, preferredAction: preferredAction, showInChat: showInChat, fromForeignApp: fromForeignApp, segmentedValues: segmentedValues, externalShare: externalShare, immediateExternalShare: immediateExternalShare, switchableAccounts: switchableAccounts, immediatePeerId: immediatePeerId, forceTheme: forceTheme, forcedActionTitle: forcedActionTitle)
+    public convenience init(context: AccountContext, subject: ShareControllerSubject, presetText: String? = nil, preferredAction: ShareControllerPreferredAction = .default, showInChat: ((Message) -> Void)? = nil, fromForeignApp: Bool = false, segmentedValues: [ShareControllerSegmentedValue]? = nil, externalShare: Bool = true, immediateExternalShare: Bool = false, switchableAccounts: [AccountWithInfo] = [], immediatePeerId: PeerId? = nil, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, forceTheme: PresentationTheme? = nil, forcedActionTitle: String? = nil) {
+        self.init(sharedContext: context.sharedContext, currentContext: context, subject: subject, presetText: presetText, preferredAction: preferredAction, showInChat: showInChat, fromForeignApp: fromForeignApp, segmentedValues: segmentedValues, externalShare: externalShare, immediateExternalShare: immediateExternalShare, switchableAccounts: switchableAccounts, immediatePeerId: immediatePeerId, updatedPresentationData: updatedPresentationData, forceTheme: forceTheme, forcedActionTitle: forcedActionTitle)
     }
     
-    public init(sharedContext: SharedAccountContext, currentContext: AccountContext, subject: ShareControllerSubject, presetText: String? = nil, preferredAction: ShareControllerPreferredAction = .default, showInChat: ((Message) -> Void)? = nil, fromForeignApp: Bool = false, segmentedValues: [ShareControllerSegmentedValue]? = nil, externalShare: Bool = true, immediateExternalShare: Bool = false, switchableAccounts: [AccountWithInfo] = [], immediatePeerId: PeerId? = nil, forceTheme: PresentationTheme? = nil, forcedActionTitle: String? = nil) {
+    public init(sharedContext: SharedAccountContext, currentContext: AccountContext, subject: ShareControllerSubject, presetText: String? = nil, preferredAction: ShareControllerPreferredAction = .default, showInChat: ((Message) -> Void)? = nil, fromForeignApp: Bool = false, segmentedValues: [ShareControllerSegmentedValue]? = nil, externalShare: Bool = true, immediateExternalShare: Bool = false, switchableAccounts: [AccountWithInfo] = [], immediatePeerId: PeerId? = nil, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, forceTheme: PresentationTheme? = nil, forcedActionTitle: String? = nil) {
         self.sharedContext = sharedContext
         self.currentContext = currentContext
         self.currentAccount = currentContext.account
@@ -347,7 +347,7 @@ public final class ShareController: ViewController {
         self.segmentedValues = segmentedValues
         self.forceTheme = forceTheme
         
-        self.presentationData = self.sharedContext.currentPresentationData.with { $0 }
+        self.presentationData = updatedPresentationData?.initial ?? sharedContext.currentPresentationData.with { $0 }
         if let forceTheme = self.forceTheme {
             self.presentationData = self.presentationData.withUpdated(theme: forceTheme)
         }
@@ -387,20 +387,22 @@ public final class ShareController: ViewController {
                 break
             case let .image(representations):
                 if case .saveToCameraRoll = preferredAction {
-                    self.defaultAction = ShareControllerAction(title: self.presentationData.strings.Preview_SaveToCameraRoll, action: { [weak self] in
+                    self.defaultAction = ShareControllerAction(title: self.presentationData.strings.Gallery_SaveImage, action: { [weak self] in
                         self?.saveToCameraRoll(representations: representations)
                         self?.actionCompleted?()
                     })
                 }
             case let .media(mediaReference):
                 var canSave = false
+                var isVideo = false
                 if mediaReference.media is TelegramMediaImage {
                     canSave = true
-                } else if mediaReference.media is TelegramMediaFile {
+                } else if let file = mediaReference.media as? TelegramMediaFile {
                     canSave = true
+                    isVideo = file.isVideo
                 }
                 if case .saveToCameraRoll = preferredAction, canSave {
-                    self.defaultAction = ShareControllerAction(title: self.presentationData.strings.Preview_SaveToCameraRoll, action: { [weak self] in
+                    self.defaultAction = ShareControllerAction(title: isVideo ? self.presentationData.strings.Gallery_SaveVideo : self.presentationData.strings.Gallery_SaveImage, action: { [weak self] in
                         self?.saveToCameraRoll(mediaReference: mediaReference)
                         self?.actionCompleted?()
                     })
@@ -461,7 +463,7 @@ public final class ShareController: ViewController {
             })
         }
         
-        self.presentationDataDisposable = (self.sharedContext.presentationData
+        self.presentationDataDisposable = ((updatedPresentationData?.signal ?? self.sharedContext.presentationData)
         |> deliverOnMainQueue).start(next: { [weak self] presentationData in
             if let strongSelf = self, strongSelf.isNodeLoaded {
                 strongSelf.controllerNode.updatePresentationData(presentationData)
@@ -482,7 +484,7 @@ public final class ShareController: ViewController {
     }
     
     override public func loadDisplayNode() {
-        self.displayNode = ShareControllerNode(sharedContext: self.sharedContext, presetText: self.presetText, defaultAction: self.defaultAction, requestLayout: { [weak self] transition in
+        self.displayNode = ShareControllerNode(sharedContext: self.sharedContext, presentationData: self.presentationData, presetText: self.presetText, defaultAction: self.defaultAction, requestLayout: { [weak self] transition in
             self?.requestLayout(transition: transition)
         }, presentError: { [weak self] title, text in
             guard let strongSelf = self else {
@@ -549,19 +551,21 @@ public final class ShareController: ViewController {
             case let .image(representations):
                 for peerId in peerIds {
                     var messages: [EnqueueMessage] = []
-                    if !text.isEmpty {
-                        messages.append(.message(text: text, attributes: [], mediaReference: nil, replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
-                    }
-                    messages.append(.message(text: "", attributes: [], mediaReference: .standalone(media: TelegramMediaImage(imageId: MediaId(namespace: Namespaces.Media.LocalImage, id: Int64.random(in: Int64.min ... Int64.max)), representations: representations.map({ $0.representation }), immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])), replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
+                    messages.append(.message(text: text, attributes: [], mediaReference: .standalone(media: TelegramMediaImage(imageId: MediaId(namespace: Namespaces.Media.LocalImage, id: Int64.random(in: Int64.min ... Int64.max)), representations: representations.map({ $0.representation }), immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])), replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
                     shareSignals.append(enqueueMessages(account: strongSelf.currentAccount, peerId: peerId, messages: messages))
                 }
             case let .media(mediaReference):
+                var sendTextAsCaption = false
+                if mediaReference.media is TelegramMediaImage || mediaReference.media is TelegramMediaFile {
+                    sendTextAsCaption = true
+                }
+                
                 for peerId in peerIds {
                     var messages: [EnqueueMessage] = []
-                    if !text.isEmpty {
+                    if !text.isEmpty && !sendTextAsCaption {
                         messages.append(.message(text: text, attributes: [], mediaReference: nil, replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
                     }
-                    messages.append(.message(text: "", attributes: [], mediaReference: mediaReference, replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
+                    messages.append(.message(text: sendTextAsCaption ? text : "", attributes: [], mediaReference: mediaReference, replyToMessageId: nil, localGroupingKey: nil, correlationId: nil))
                     shareSignals.append(enqueueMessages(account: strongSelf.currentAccount, peerId: peerId, messages: messages))
                 }
             case let .mapMedia(media):
@@ -627,7 +631,7 @@ public final class ShareController: ViewController {
                                     }
                                     if !displayedError, case .slowmodeActive = error {
                                         displayedError = true
-                                        strongSelf.present(standardTextAlertController(theme: AlertControllerTheme(presentationData: strongSelf.presentationData), title: peer.displayTitle(strings: strongSelf.presentationData.strings, displayOrder: strongSelf.presentationData.nameDisplayOrder), text: strongSelf.presentationData.strings.Chat_SlowmodeSendError, actions: [TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+                                        strongSelf.present(standardTextAlertController(theme: AlertControllerTheme(presentationData: strongSelf.presentationData), title: EnginePeer(peer).displayTitle(strings: strongSelf.presentationData.strings, displayOrder: strongSelf.presentationData.nameDisplayOrder), text: strongSelf.presentationData.strings.Chat_SlowmodeSendError, actions: [TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
                                     }
                                 })
                             }
@@ -748,23 +752,7 @@ public final class ShareController: ViewController {
                                     }
                                 }
                                 
-                                var activities: [UIActivity]?
-                                if false, #available(iOS 10.0, *), strongSelf.sharedContext.applicationBindings.canOpenUrl("instagram-stories://"), case let .messages(messages) = strongSelf.subject, let message = messages.first, let peer = message.peers[message.id.peerId] {
-                                    let shareToInstagram = ShareToInstagramActivity(action: { sharedItems in
-                                        let renderer = MessageStoryRenderer(context: strongSelf.currentContext, messages: messages)
-                                        
-                                        let layout = ContainerViewLayout(size: CGSize(width: 414.0, height: 896.0), metrics: LayoutMetrics(widthClass: .compact, heightClass: .compact), deviceMetrics: .iPhoneX, intrinsicInsets: UIEdgeInsets(), safeInsets: UIEdgeInsets(), additionalInsets: UIEdgeInsets(), statusBarHeight: 0.0, inputHeight: nil, inputHeightIsInteractivellyChanging: false, inVoiceOver: false)
-                                        renderer.update(layout: layout) { image in
-                                            if let data = image?.pngData() {
-                                                let pasteboardItems: [[String: Any]] = [["com.instagram.sharedSticker.backgroundImage": data,
-                                                                                         "com.instagram.sharedSticker.contentURL": "https://t.me/\(peer.addressName ?? "")/\(message.id.id)"]]
-                                                UIPasteboard.general.setItems(pasteboardItems, options: [.expirationDate: Date().addingTimeInterval(5 * 60)])
-                                                strongSelf.sharedContext.applicationBindings.openUrl("instagram-stories://share")
-                                            }
-                                        }
-                                    })
-                                    activities = [shareToInstagram]
-                                }
+                                let activities: [UIActivity]? = nil
                                 
                                 let _ = (strongSelf.didAppearPromise.get()
                                 |> filter { $0 }
@@ -803,7 +791,7 @@ public final class ShareController: ViewController {
             }
             var items: [ActionSheetItem] = []
             for info in strongSelf.switchableAccounts {
-                items.append(ActionSheetPeerItem(context: strongSelf.sharedContext.makeTempAccountContext(account: info.account), peer: info.peer, title: info.peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), isSelected: info.account.id == strongSelf.currentAccount.id, strings: presentationData.strings, theme: presentationData.theme, action: { [weak self] in
+                items.append(ActionSheetPeerItem(context: strongSelf.sharedContext.makeTempAccountContext(account: info.account), peer: EnginePeer(info.peer), title: EnginePeer(info.peer).displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), isSelected: info.account.id == strongSelf.currentAccount.id, strings: presentationData.strings, theme: presentationData.theme, action: { [weak self] in
                     dismissAction()
                     self?.switchToAccount(account: info.account, animateIn: true)
                 }))
@@ -896,7 +884,7 @@ public final class ShareController: ViewController {
         } else {
             context = self.sharedContext.makeTempAccountContext(account: self.currentAccount)
         }
-        self.controllerNode.transitionToProgressWithValue(signal: SaveToCameraRoll.saveToCameraRoll(context: context, postbox: context.account.postbox, mediaReference: .standalone(media: media)) |> map(Optional.init))
+        self.controllerNode.transitionToProgressWithValue(signal: SaveToCameraRoll.saveToCameraRoll(context: context, postbox: context.account.postbox, mediaReference: .standalone(media: media)) |> map(Optional.init), dismissImmediately: true)
     }
     
     private func saveToCameraRoll(mediaReference: AnyMediaReference) {
@@ -906,7 +894,7 @@ public final class ShareController: ViewController {
         } else {
             context = self.sharedContext.makeTempAccountContext(account: self.currentAccount)
         }
-        self.controllerNode.transitionToProgressWithValue(signal: SaveToCameraRoll.saveToCameraRoll(context: context, postbox: context.account.postbox, mediaReference: mediaReference) |> map(Optional.init))
+        self.controllerNode.transitionToProgressWithValue(signal: SaveToCameraRoll.saveToCameraRoll(context: context, postbox: context.account.postbox, mediaReference: mediaReference) |> map(Optional.init), dismissImmediately: true)
     }
     
     private func switchToAccount(account: Account, animateIn: Bool) {
@@ -984,7 +972,7 @@ final class MessageStoryRenderer {
 
         self.containerNode = ASDisplayNode()
         
-        self.instantChatBackgroundNode = WallpaperBackgroundNode(context: context)
+        self.instantChatBackgroundNode = createWallpaperBackgroundNode(context: context, forChatDisplay: false)
         self.instantChatBackgroundNode.displaysAsynchronously = false
         
         self.messagesContainerNode = ASDisplayNode()

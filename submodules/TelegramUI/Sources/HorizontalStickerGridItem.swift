@@ -225,23 +225,14 @@ final class HorizontalStickerGridItemNode: GridItemNode {
     }
     
     func updatePreviewing(animated: Bool) {
-        var isPreviewing = false
-        if let (_, item, _) = self.currentState {
-            //isPreviewing = item.isPreviewed(self.stickerItem)
-        }
+        let isPreviewing = false
+        
         if self.currentIsPreviewing != isPreviewing {
             self.currentIsPreviewing = isPreviewing
-            
-            if isPreviewing {
-                self.layer.sublayerTransform = CATransform3DMakeScale(0.8, 0.8, 1.0)
-                if animated {
-                    self.layer.animateSpring(from: 1.0 as NSNumber, to: 0.8 as NSNumber, keyPath: "sublayerTransform.scale", duration: 0.4)
-                }
-            } else {
-                self.layer.sublayerTransform = CATransform3DIdentity
-                if animated {
-                    self.layer.animateSpring(from: 0.8 as NSNumber, to: 1.0 as NSNumber, keyPath: "sublayerTransform.scale", duration: 0.5)
-                }
+
+            self.layer.sublayerTransform = CATransform3DIdentity
+            if animated {
+                self.layer.animateSpring(from: 0.8 as NSNumber, to: 1.0 as NSNumber, keyPath: "sublayerTransform.scale", duration: 0.5)
             }
         }
     }

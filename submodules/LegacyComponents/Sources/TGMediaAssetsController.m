@@ -401,11 +401,11 @@
         _context = context;
         _saveEditedPhotos = saveEditedPhotos;
      
-        if ([[LegacyComponentsGlobals provider] respondsToSelector:@selector(navigationBarPallete)])
-            [((TGNavigationBar *)self.navigationBar) setPallete:[[LegacyComponentsGlobals provider] navigationBarPallete]];
+        if ([context respondsToSelector:@selector(navigationBarPallete)])
+            [((TGNavigationBar *)self.navigationBar) setPallete:[context navigationBarPallete]];
         
-        if ([[LegacyComponentsGlobals provider] respondsToSelector:@selector(mediaAssetsPallete)])
-            [self setPallete:[[LegacyComponentsGlobals provider] mediaAssetsPallete]];
+        if ([context respondsToSelector:@selector(mediaAssetsPallete)])
+            [self setPallete:[context mediaAssetsPallete]];
         
         _actionHandle = [[ASHandle alloc] initWithDelegate:self releaseOnMainThread:true];
         
@@ -583,12 +583,15 @@
             hasOnScreenNavigation = (self.viewLoaded && self.view.safeAreaInsets.bottom > FLT_EPSILON) || _context.safeAreaInset.bottom > FLT_EPSILON;
         }
     }
-    
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     CGFloat inset = [TGViewController safeAreaInsetForOrientation:self.interfaceOrientation hasOnScreenNavigation:hasOnScreenNavigation].bottom;
     _toolbarView = [[TGMediaPickerToolbarView alloc] initWithFrame:CGRectMake(0, self.view.frame.size.height - TGMediaPickerToolbarHeight - inset, self.view.frame.size.width, TGMediaPickerToolbarHeight + inset)];
     if (_pallete != nil)
         _toolbarView.pallete = _pallete;
     _toolbarView.safeAreaInset = [TGViewController safeAreaInsetForOrientation:self.interfaceOrientation hasOnScreenNavigation:hasOnScreenNavigation];
+#pragma clang diagnostic pop
     _toolbarView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     if ((_intent != TGMediaAssetsControllerSendFileIntent && _intent != TGMediaAssetsControllerSendMediaIntent && _intent != TGMediaAssetsControllerPassportMultipleIntent) || _selectionContext == nil)
         [_toolbarView setRightButtonHidden:true];
@@ -609,19 +612,24 @@
         };
     }
     [self.view addSubview:_toolbarView];
-    
-    if (iosMajorVersion() >= 14 && [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelReadWrite] == PHAuthorizationStatusLimited) {
-        _accessView = [[TGMediaPickerAccessView alloc] init];
-        _accessView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        _accessView.safeAreaInset = [TGViewController safeAreaInsetForOrientation:self.interfaceOrientation hasOnScreenNavigation:hasOnScreenNavigation];
-        [_accessView setPallete:_pallete];
-        _accessView.pressed = ^{
-            __strong TGMediaAssetsController *strongSelf = weakSelf;
-            if (strongSelf != nil) {
-                [strongSelf manageAccess];
-            }
-        };
-        [self.view addSubview:_accessView];
+
+    if (@available(iOS 14.0, *)) {
+        if ([PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelReadWrite] == PHAuthorizationStatusLimited) {
+            _accessView = [[TGMediaPickerAccessView alloc] init];
+            _accessView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            _accessView.safeAreaInset = [TGViewController safeAreaInsetForOrientation:self.interfaceOrientation hasOnScreenNavigation:hasOnScreenNavigation];
+    #pragma clang diagnostic pop
+            [_accessView setPallete:_pallete];
+            _accessView.pressed = ^{
+                __strong TGMediaAssetsController *strongSelf = weakSelf;
+                if (strongSelf != nil) {
+                    [strongSelf manageAccess];
+                }
+            };
+            [self.view addSubview:_accessView];
+        }
     }
 }
 
@@ -818,14 +826,14 @@
     }
 }
 
-- (NSArray *)resultSignalsWithCurrentItem:(TGMediaAsset *)currentItem descriptionGenerator:(id (^)(id, NSString *, NSArray *, NSString *, NSString *))descriptionGenerator
+- (NSArray *)resultSignalsWithCurrentItem:(TGMediaAsset *)currentItem descriptionGenerator:(id (^)(id, NSAttributedString *, NSString *, NSString *))descriptionGenerator
 {
     bool storeAssets = (_editingContext != nil) && self.shouldStoreAssets;
     
     if (_intent == TGMediaAssetsControllerSendMediaIntent && _selectionContext.allowGrouping)
         [[NSUserDefaults standardUserDefaults] setObject:@(!_selectionContext.grouping) forKey:@"TG_mediaGroupingDisabled_v0"];
     
-    return [TGMediaAssetsController resultSignalsForSelectionContext:_selectionContext editingContext:_editingContext intent:_intent currentItem:currentItem storeAssets:storeAssets useMediaCache:self.localMediaCacheEnabled descriptionGenerator:descriptionGenerator saveEditedPhotos:_saveEditedPhotos];
+    return [TGMediaAssetsController resultSignalsForSelectionContext:_selectionContext editingContext:_editingContext intent:_intent currentItem:currentItem storeAssets:storeAssets convertToJpeg:false descriptionGenerator:descriptionGenerator saveEditedPhotos:_saveEditedPhotos];
 }
 
 + (int64_t)generateGroupedId
@@ -835,7 +843,7 @@
     return value;
 }
 
-+ (NSArray *)resultSignalsForSelectionContext:(TGMediaSelectionContext *)selectionContext editingContext:(TGMediaEditingContext *)editingContext intent:(TGMediaAssetsControllerIntent)intent currentItem:(TGMediaAsset *)currentItem storeAssets:(bool)storeAssets useMediaCache:(bool)__unused useMediaCache descriptionGenerator:(id (^)(id, NSString *, NSArray *, NSString *, NSString *))descriptionGenerator saveEditedPhotos:(bool)saveEditedPhotos
++ (NSArray *)resultSignalsForSelectionContext:(TGMediaSelectionContext *)selectionContext editingContext:(TGMediaEditingContext *)editingContext intent:(TGMediaAssetsControllerIntent)intent currentItem:(TGMediaAsset *)currentItem storeAssets:(bool)storeAssets convertToJpeg:(bool)convertToJpeg descriptionGenerator:(id (^)(id, NSAttributedString *, NSString *, NSString *))descriptionGenerator saveEditedPhotos:(bool)saveEditedPhotos
 {
     NSMutableArray *signals = [[NSMutableArray alloc] init];
     NSMutableArray *selectedItems = selectionContext.selectedItems ? [selectionContext.selectedItems mutableCopy] : [[NSMutableArray alloc] init];
@@ -900,6 +908,7 @@
         
     NSNumber *groupedId;
     NSInteger i = 0;
+    NSInteger num = 0;
     bool grouping = selectionContext.grouping;
     
     bool hasAnyTimers = false;
@@ -930,16 +939,19 @@
             asset = ((TGCameraCapturedVideo *)asset).originalAsset;
         }
         
+        NSAttributedString *caption = [editingContext captionForItem:asset];
+        
+        if (editingContext.isForcedCaption && num > 0) {
+            caption = nil;
+        }
+        
         switch (asset.type)
         {
             case TGMediaAssetPhotoType:
             {
                 if (intent == TGMediaAssetsControllerSendFileIntent)
                 {
-                    NSString *caption = [editingContext captionForItem:asset];
-                    NSArray *entities = [editingContext entitiesForItem:asset];
-                    
-                    [signals addObject:[[[TGMediaAssetImageSignals imageDataForAsset:asset allowNetworkAccess:false] map:^NSDictionary *(TGMediaAssetImageData *assetData)
+                    [signals addObject:[[[TGMediaAssetImageSignals imageDataForAsset:asset allowNetworkAccess:false convertToJpeg:convertToJpeg] map:^NSDictionary *(TGMediaAssetImageData *assetData)
                     {
                         NSString *tempFileName = TGTemporaryFileName(nil);
                         [assetData.imageData writeToURL:[NSURL fileURLWithPath:tempFileName] atomically:true];
@@ -953,7 +965,7 @@
                         if (groupedId != nil)
                             dict[@"groupedId"] = groupedId;
                         
-                        id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                        id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                         return generatedItem;
                     }] catch:^SSignal *(id error)
                     {
@@ -979,17 +991,16 @@
                             if (groupedId != nil)
                                 dict[@"groupedId"] = groupedId;
                             
-                            id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                            id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                             return generatedItem;
                         }];
                     }]];
                     
                     i++;
+                    num++;
                 }
                 else
                 {
-                    NSString *caption = [editingContext captionForItem:asset];
-                    NSArray *entities = [editingContext entitiesForItem:asset];
                     id<TGMediaEditAdjustments> adjustments = [editingContext adjustmentsForItem:asset];
                     NSNumber *timer = [editingContext timerForItem:asset];
                     
@@ -1006,7 +1017,7 @@
                         else if (groupedId != nil && !hasAnyTimers)
                             dict[@"groupedId"] = groupedId;
                         
-                        id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                        id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                         return generatedItem;
                     }];
                     
@@ -1082,12 +1093,13 @@
                                 else if (groupedId != nil && !hasAnyTimers)
                                     dict[@"groupedId"] = groupedId;
                                 
-                                id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                                id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                                 return generatedItem;
                             }];
                         }]];
                         
                         i++;
+                        num++;
                     }
                     else
                     {
@@ -1164,7 +1176,7 @@
                             else if (groupedId != nil && !hasAnyTimers)
                                 dict[@"groupedId"] = groupedId;
                             
-                            id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                            id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                             return generatedItem;
                         }] catch:^SSignal *(__unused id error)
                         {
@@ -1173,6 +1185,7 @@
                     }
                     
                     i++;
+                    num++;
                 }
             }
                 break;
@@ -1181,8 +1194,6 @@
             {
                 if (intent == TGMediaAssetsControllerSendFileIntent)
                 {
-                    NSString *caption = [editingContext captionForItem:asset];
-                    NSArray *entities = [editingContext entitiesForItem:asset];
                     id<TGMediaEditAdjustments> adjustments = [editingContext adjustmentsForItem:asset];
                     
                     CGSize dimensions = asset.originalSize;
@@ -1205,17 +1216,16 @@
                         if (groupedId != nil)
                             dict[@"groupedId"] = groupedId;
                         
-                        id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                        id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                         return generatedItem;
                     }]];
                     
                     i++;
+                    num++;
                 }
                 else
                 {
                     TGVideoEditAdjustments *adjustments = (TGVideoEditAdjustments *)[editingContext adjustmentsForItem:asset];
-                    NSString *caption = [editingContext captionForItem:asset];
-                    NSArray *entities = [editingContext entitiesForItem:asset];
                     NSNumber *timer = [editingContext timerForItem:asset];
                     
                     UIImage *(^cropVideoThumbnail)(UIImage *, CGSize, CGSize, bool) = ^UIImage *(UIImage *image, CGSize targetSize, CGSize sourceSize, bool resize)
@@ -1275,11 +1285,12 @@
                         else if (groupedId != nil && !hasAnyTimers)
                             dict[@"groupedId"] = groupedId;
                         
-                        id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                        id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                         return generatedItem;
                     }]];
                     
                     i++;
+                    num++;
                 }
             }
                 break;
@@ -1292,8 +1303,6 @@
                 }
                 
                 TGVideoEditAdjustments *adjustments = (TGVideoEditAdjustments *)[editingContext adjustmentsForItem:video];
-                NSString *caption = [editingContext captionForItem:video];
-                NSArray *entities = [editingContext entitiesForItem:video];
                 NSNumber *timer = [editingContext timerForItem:video];
                 
                 UIImage *(^cropVideoThumbnail)(UIImage *, CGSize, CGSize, bool) = ^UIImage *(UIImage *image, CGSize targetSize, CGSize sourceSize, bool resize)
@@ -1353,11 +1362,12 @@
                     if (timer != nil)
                         dict[@"timer"] = timer;
                     
-                    id generatedItem = descriptionGenerator(dict, caption, entities, nil, asset.identifier);
+                    id generatedItem = descriptionGenerator(dict, caption, nil, asset.identifier);
                     return generatedItem;
                 }]];
                 
                 i++;
+                num++;
             }
                 break;
                 

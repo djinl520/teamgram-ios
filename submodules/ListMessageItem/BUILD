@@ -6,6 +6,9 @@ swift_library(
     srcs = glob([
 		"Sources/**/*.swift",
     ]),
+    copts = [
+        "-warnings-as-errors",
+    ],
     deps = [
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
@@ -32,6 +35,7 @@ swift_library(
         "//submodules/FileMediaResourceStatus:FileMediaResourceStatus",
         "//submodules/ManagedAnimationNode:ManagedAnimationNode",
         "//submodules/WallpaperResources:WallpaperResources",
+        "//submodules/Postbox:Postbox",
     ],
     visibility = [
         "//visibility:public",

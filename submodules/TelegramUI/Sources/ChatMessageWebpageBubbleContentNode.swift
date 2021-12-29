@@ -63,17 +63,31 @@ final class ChatMessageWebpageBubbleContentNode: ChatMessageBubbleContentNode {
         }
         self.contentNode.activateAction = { [weak self] in
             if let strongSelf = self, let item = strongSelf.item {
-                var webPageContent: TelegramMediaWebpageLoadedContent?
-                for media in item.message.media {
-                    if let media = media as? TelegramMediaWebpage {
-                        if case let .Loaded(content) = media.content {
-                            webPageContent = content
+                if let adAttribute = item.message.adAttribute, let author = item.message.author {
+                    let navigationData: ChatControllerInteractionNavigateToPeer
+                    if let bot = author as? TelegramUser, bot.botInfo != nil, let startParam = adAttribute.startParam {
+                        navigationData = .withBotStartPayload(ChatControllerInitialBotStart(payload: startParam, behavior: .interactive))
+                    } else {
+                        var subject: ChatControllerSubject?
+                        if let messageId = adAttribute.messageId {
+                            subject = .message(id: .id(messageId), highlight: true, timecode: nil)
                         }
-                        break
+                        navigationData = .chat(textInputState: nil, subject: subject, peekData: nil)
                     }
-                }
-                if let webpage = webPageContent {
-                    item.controllerInteraction.openUrl(webpage.url, false, nil, nil)
+                    item.controllerInteraction.openPeer(author.id, navigationData, nil)
+                } else {
+                    var webPageContent: TelegramMediaWebpageLoadedContent?
+                    for media in item.message.media {
+                        if let media = media as? TelegramMediaWebpage {
+                            if case let .Loaded(content) = media.content {
+                                webPageContent = content
+                            }
+                            break
+                        }
+                    }
+                    if let webpage = webPageContent {
+                        item.controllerInteraction.openUrl(webpage.url, false, nil, nil)
+                    }
                 }
             }
         }
@@ -108,6 +122,8 @@ final class ChatMessageWebpageBubbleContentNode: ChatMessageBubbleContentNode {
             
             var actionIcon: ChatMessageAttachedContentActionIcon?
             var actionTitle: String?
+
+            var displayLine: Bool = true
             
             if let webpage = webPageContent {
                 let type = websiteType(of: webpage.websiteName)
@@ -271,15 +287,23 @@ final class ChatMessageWebpageBubbleContentNode: ChatMessageBubbleContentNode {
                     }
                 } else if let type = webpage.type {
                     switch type {
+                        case "telegram_channel_request":
+                            actionTitle = item.presentationData.strings.Conversation_RequestToJoinChannel
+                        case "telegram_chat_request", "telegram_megagroup_request":
+                            actionTitle = item.presentationData.strings.Conversation_RequestToJoinGroup
                         case "telegram_channel":
                             actionTitle = item.presentationData.strings.Conversation_ViewChannel
                         case "telegram_chat", "telegram_megagroup":
                             actionTitle = item.presentationData.strings.Conversation_ViewGroup
                         case "telegram_message":
                             actionTitle = item.presentationData.strings.Conversation_ViewMessage
-                        case "telegram_voicechat":
-                            title = item.presentationData.strings.Conversation_VoiceChat
-                            if webpage.url.contains("voicechat=") {
+                        case "telegram_voicechat", "telegram_videochat", "telegram_livestream":
+                            if type == "telegram_livestream" {
+                                title = item.presentationData.strings.Conversation_LiveStream
+                            } else {
+                                title = item.presentationData.strings.Conversation_VoiceChat
+                            }
+                            if webpage.url.contains("voicechat=") || webpage.url.contains("videochat=") || webpage.url.contains("livestream=") {
                                 actionTitle = item.presentationData.strings.Conversation_JoinVoiceChatAsSpeaker
                             } else {
                                 actionTitle = item.presentationData.strings.Conversation_JoinVoiceChatAsListener
@@ -297,9 +321,43 @@ final class ChatMessageWebpageBubbleContentNode: ChatMessageBubbleContentNode {
                             break
                     }
                 }
+            } else if let adAttribute = item.message.adAttribute {
+                title = nil
+                subtitle = nil
+                text = item.message.text
+                for attribute in item.message.attributes {
+                    if let attribute = attribute as? TextEntitiesMessageAttribute {
+                        entities = attribute.entities
+                    }
+                }
+                for media in item.message.media {
+                    switch media {
+                    case _ as TelegramMediaImage, _ as TelegramMediaFile:
+                        mediaAndFlags = (media, ChatMessageAttachedContentNodeMediaFlags())
+                    default:
+                        break
+                    }
+                }
+
+                if let author = item.message.author as? TelegramUser, author.botInfo != nil {
+                    actionTitle = item.presentationData.strings.Conversation_ViewBot
+                } else if let author = item.message.author as? TelegramChannel, case .group = author.info {
+                    if adAttribute.messageId != nil {
+                        actionTitle = item.presentationData.strings.Conversation_ViewPost
+                    } else {
+                        actionTitle = item.presentationData.strings.Conversation_ViewGroup
+                    }
+                } else {
+                    if adAttribute.messageId != nil {
+                        actionTitle = item.presentationData.strings.Conversation_ViewMessage
+                    } else {
+                        actionTitle = item.presentationData.strings.Conversation_ViewChannel
+                    }
+                }
+                displayLine = false
             }
             
-            let (initialWidth, continueLayout) = contentNodeLayout(item.presentationData, item.controllerInteraction.automaticMediaDownloadSettings, item.associatedData, item.attributes, item.context, item.controllerInteraction, item.message, item.read, item.chatLocation, title, subtitle, text, entities, mediaAndFlags, badge, actionIcon, actionTitle, true, layoutConstants, preparePosition, constrainedSize)
+            let (initialWidth, continueLayout) = contentNodeLayout(item.presentationData, item.controllerInteraction.automaticMediaDownloadSettings, item.associatedData, item.attributes, item.context, item.controllerInteraction, item.message, item.read, item.chatLocation, title, subtitle, text, entities, mediaAndFlags, badge, actionIcon, actionTitle, displayLine, layoutConstants, preparePosition, constrainedSize)
             
             let contentProperties = ChatMessageBubbleContentProperties(hidesSimpleAuthorHeader: false, headerSpacing: 8.0, hidesBackground: .never, forceFullCorners: false, forceAlignment: .none)
             
@@ -345,9 +403,22 @@ final class ChatMessageWebpageBubbleContentNode: ChatMessageBubbleContentNode {
     }
     
     override func tapActionAtPoint(_ point: CGPoint, gesture: TapLongTapOrDoubleTapGesture, isEstimating: Bool) -> ChatMessageBubbleContentTapAction {
+        guard let item = self.item else {
+            return .none
+        }
         if self.bounds.contains(point) {
             let contentNodeFrame = self.contentNode.frame
             let result = self.contentNode.tapActionAtPoint(point.offsetBy(dx: -contentNodeFrame.minX, dy: -contentNodeFrame.minY), gesture: gesture, isEstimating: isEstimating)
+
+            if item.message.adAttribute != nil {
+                if case .none = result {
+                    if self.contentNode.hasActionAtPoint(point.offsetBy(dx: -contentNodeFrame.minX, dy: -contentNodeFrame.minY)) {
+                        return .ignore
+                    }
+                }
+                return result
+            }
+
             switch result {
                 case .none:
                     break
@@ -473,6 +544,9 @@ final class ChatMessageWebpageBubbleContentNode: ChatMessageBubbleContentNode {
     }
     
     override func reactionTargetNode(value: String) -> (ASDisplayNode, ASDisplayNode)? {
-        return self.contentNode.reactionTargetNode(value: value)
+        if !self.contentNode.statusNode.isHidden {
+            return self.contentNode.statusNode.reactionNode(value: value)
+        }
+        return nil
     }
 }

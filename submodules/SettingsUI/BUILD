@@ -6,6 +6,9 @@ swift_library(
     srcs = glob([
 		"Sources/**/*.swift",
     ]),
+    copts = [
+        "-warnings-as-errors",
+    ],
     deps = [
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
@@ -85,7 +88,6 @@ swift_library(
         "//submodules/OpenInExternalAppUI:OpenInExternalAppUI",
         "//submodules/AccountUtils:AccountUtils",
         "//submodules/AuthTransferUI:AuthTransferUI",
-        "//submodules/WidgetSetupScreen:WidgetSetupScreen",
         "//submodules/UIKitRuntimeUtils:UIKitRuntimeUtils",
         "//submodules/DebugSettingsUI:DebugSettingsUI",
         "//submodules/WallpaperBackgroundNode:WallpaperBackgroundNode",

@@ -249,6 +249,9 @@ class BazelCommandLine:
                 '--disk_cache={path}'.format(path=self.cache_dir)
             ]
 
+        if self.continue_on_error:
+            combined_arguments += ['--keep_going']
+
         return combined_arguments
 
     def get_additional_build_arguments(self):
@@ -365,6 +368,8 @@ def generate_project(arguments):
     elif arguments.cacheHost is not None:
         bazel_command_line.add_remote_cache(arguments.cacheHost)
 
+    bazel_command_line.set_continue_on_error(arguments.continueOnError)
+
     resolve_configuration(bazel_command_line, arguments)
 
     bazel_command_line.set_build_number(arguments.buildNumber)
@@ -372,6 +377,7 @@ def generate_project(arguments):
     disable_extensions = False
     disable_provisioning_profiles = False
     generate_dsym = False
+    target_name = "Telegram"
 
     if arguments.disableExtensions is not None:
         disable_extensions = arguments.disableExtensions
@@ -379,6 +385,8 @@ def generate_project(arguments):
         disable_provisioning_profiles = arguments.disableProvisioningProfiles
     if arguments.generateDsym is not None:
         generate_dsym = arguments.generateDsym
+    if arguments.target is not None:
+        target_name = arguments.target
     
     call_executable(['killall', 'Xcode'], check_result=False)
 
@@ -388,7 +396,8 @@ def generate_project(arguments):
         disable_provisioning_profiles=disable_provisioning_profiles,
         generate_dsym=generate_dsym,
         configuration_path=bazel_command_line.configuration_path,
-        bazel_app_arguments=bazel_command_line.get_project_generation_arguments()
+        bazel_app_arguments=bazel_command_line.get_project_generation_arguments(),
+        target_name=target_name
     )
 
 
@@ -529,6 +538,13 @@ if __name__ == '__main__':
     )
 
     generateProjectParser.add_argument(
+        '--continueOnError',
+        action='store_true',
+        default=False,
+        help='Continue build process after an error.',
+    )
+
+    generateProjectParser.add_argument(
         '--disableProvisioningProfiles',
         action='store_true',
         default=False,
@@ -545,6 +561,13 @@ if __name__ == '__main__':
         help='''
             This improves profiling experinence by generating DSYM files. Keep disabled for better build performance.
             '''
+    )
+
+    generateProjectParser.add_argument(
+        '--target',
+        type=str,
+        help='A custom bazel target name to build.',
+        metavar='target_name'
     )
 
     buildParser = subparsers.add_parser('build', help='Build the app')

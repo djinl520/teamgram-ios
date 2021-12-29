@@ -94,16 +94,16 @@ private enum ChatListFilterPresetListEntry: ItemListNodeEntry {
             return 0
         case .listHeader:
             return 100
-        case let .preset(preset):
-            return 101 + preset.index.value
+        case let .preset(index, _, _, _, _, _, _):
+            return 101 + index.value
         case .addItem:
             return 1000
         case .listFooter:
             return 1001
         case .suggestedListHeader:
             return 1002
-        case let .suggestedPreset(suggestedPreset):
-            return 1003 + suggestedPreset.index.value
+        case let .suggestedPreset(index, _, _, _):
+            return 1003 + index.value
         case .suggestedAddCustom:
             return 2000
         }
@@ -115,14 +115,14 @@ private enum ChatListFilterPresetListEntry: ItemListNodeEntry {
             return .screenHeader
         case .suggestedListHeader:
             return .suggestedListHeader
-        case let .suggestedPreset(suggestedPreset):
-            return .suggestedPreset(suggestedPreset.preset)
+        case let .suggestedPreset(_, _, _, preset):
+            return .suggestedPreset(preset)
         case .suggestedAddCustom:
             return .suggestedAddCustom
         case .listHeader:
             return .listHeader
-        case let .preset(preset):
-            return .preset(preset.preset.id)
+        case let .preset(_, _, _, preset, _, _, _):
+            return .preset(preset.id)
         case .addItem:
             return .addItem
         case .listFooter:
@@ -138,7 +138,7 @@ private enum ChatListFilterPresetListEntry: ItemListNodeEntry {
         let arguments = arguments as! ChatListFilterPresetListControllerArguments
         switch self {
         case let .screenHeader(text):
-            return ChatListFilterSettingsHeaderItem(theme: presentationData.theme, text: text, animation: .folders, sectionId: self.section)
+            return ChatListFilterSettingsHeaderItem(context: arguments.context, theme: presentationData.theme, text: text, animation: .folders, sectionId: self.section)
         case let .suggestedListHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, multiline: true, sectionId: self.section)
         case let .suggestedPreset(_, title, label, preset):
@@ -297,8 +297,6 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
         presentControllerImpl?(actionSheet)
     })
     
-    let chatCountCache = Atomic<[ChatListFilterData: Int]>(value: [:])
-    
     let filtersWithCountsSignal = context.engine.peers.updatedChatListFilters()
     |> distinctUntilChanged
     |> mapToSignal { filters -> Signal<[(ChatListFilter, Int)], NoError> in
@@ -309,7 +307,7 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
     
     let featuredFilters = context.account.postbox.preferencesView(keys: [PreferencesKeys.chatListFiltersFeaturedState])
     |> map { preferences -> [ChatListFeaturedFilter] in
-        guard let state = preferences.values[PreferencesKeys.chatListFiltersFeaturedState] as? ChatListFiltersFeaturedState else {
+        guard let state = preferences.values[PreferencesKeys.chatListFiltersFeaturedState]?.get(ChatListFiltersFeaturedState.self) else {
             return []
         }
         return state.filters
@@ -332,7 +330,7 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
         featuredFilters
     )
     |> map { presentationData, state, filtersWithCountsValue, preferences, updatedFilterOrderValue, suggestedFilters -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        let filterSettings = preferences.values[ApplicationSpecificPreferencesKeys.chatListFilterSettings] as? ChatListFilterSettings ?? ChatListFilterSettings.default
+        let filterSettings = preferences.values[ApplicationSpecificPreferencesKeys.chatListFilterSettings]?.get(ChatListFilterSettings.self) ?? ChatListFilterSettings.default
         let leftNavigationButton: ItemListNavigationButton?
         switch mode {
         case .default:
@@ -430,7 +428,7 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
     }
     controller.setReorderEntry({ (fromIndex: Int, toIndex: Int, entries: [ChatListFilterPresetListEntry]) -> Signal<Bool, NoError> in
         let fromEntry = entries[fromIndex]
-        guard case let .preset(fromFilter) = fromEntry else {
+        guard case let .preset(_, _, _, fromPreset, _, _, _) = fromEntry else {
             return .single(false)
         }
         var referenceFilter: ChatListFilter?
@@ -438,8 +436,8 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
         var afterAll = false
         if toIndex < entries.count {
             switch entries[toIndex] {
-            case let .preset(toFilter):
-                referenceFilter = toFilter.preset
+            case let .preset(_, _, _, preset, _, _, _):
+                referenceFilter = preset
             default:
                 if entries[toIndex] < fromEntry {
                     beforeAll = true
@@ -459,7 +457,7 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
             var filters = filtersWithAppliedOrder(filters: filtersWithCountsValue, order: updatedFilterOrderValue).map { $0.0 }
             let initialOrder = filters.map { $0.id }
             
-            if let index = filters.firstIndex(where: { $0.id == fromFilter.preset.id }) {
+            if let index = filters.firstIndex(where: { $0.id == fromPreset.id }) {
                 filters.remove(at: index)
             }
             if let referenceFilter = referenceFilter {
@@ -467,21 +465,21 @@ public func chatListFilterPresetListController(context: AccountContext, mode: Ch
                 for i in 0 ..< filters.count {
                     if filters[i].id == referenceFilter.id {
                         if fromIndex < toIndex {
-                            filters.insert(fromFilter.preset, at: i + 1)
+                            filters.insert(fromPreset, at: i + 1)
                         } else {
-                            filters.insert(fromFilter.preset, at: i)
+                            filters.insert(fromPreset, at: i)
                         }
                         inserted = true
                         break
                     }
                 }
                 if !inserted {
-                    filters.append(fromFilter.preset)
+                    filters.append(fromPreset)
                 }
             } else if beforeAll {
-                filters.insert(fromFilter.preset, at: 0)
+                filters.insert(fromPreset, at: 0)
             } else if afterAll {
-                filters.append(fromFilter.preset)
+                filters.append(fromPreset)
             }
             
             let updatedOrder = filters.map { $0.id }

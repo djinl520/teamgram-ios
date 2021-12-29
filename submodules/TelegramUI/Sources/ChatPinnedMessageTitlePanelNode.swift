@@ -327,24 +327,7 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
         if let animation = animation {
             animationTransition = .animated(duration: 0.2, curve: .easeInOut)
             
-            if false, let copyView = self.contentContainer.view.snapshotView(afterScreenUpdates: false) {
-                let offset: CGFloat
-                switch animation {
-                case .slideToTop:
-                    offset = -40.0
-                case .slideToBottom:
-                    offset = 40.0
-                }
-                
-                copyView.frame = self.contentContainer.frame
-                self.clippingContainer.view.addSubview(copyView)
-                copyView.layer.animatePosition(from: CGPoint(), to: CGPoint(x: 0.0, y: offset), duration: 0.2, removeOnCompletion: false, additive: true)
-                copyView.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, removeOnCompletion: false, completion: { [weak copyView] _ in
-                    copyView?.removeFromSuperview()
-                })
-                self.contentContainer.layer.animatePosition(from: CGPoint(x: 0.0, y: -offset), to: CGPoint(), duration: 0.2, additive: true)
-                self.contentContainer.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2)
-            } else if let copyView = self.textNode.view.snapshotView(afterScreenUpdates: false) {
+            if let copyView = self.textNode.view.snapshotView(afterScreenUpdates: false) {
                 let offset: CGFloat
                 switch animation {
                 case .slideToTop:
@@ -423,7 +406,7 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
             if isReplyThread {
                 let titleString: String
                 if let author = message.effectiveAuthor {
-                    titleString = author.displayTitle(strings: strings, displayOrder: nameDisplayOrder)
+                    titleString = EnginePeer(author).displayTitle(strings: strings, displayOrder: nameDisplayOrder)
                 } else {
                     titleString = ""
                 }
@@ -468,7 +451,7 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
             }
             let (titleLayout, titleApply) = makeTitleLayout(CGSize(width: width - textLineInset - contentLeftInset - rightInset - textRightInset, height: CGFloat.greatestFiniteMagnitude), titleStrings)
             
-            let (textLayout, textApply) = makeTextLayout(TextNodeLayoutArguments(attributedString: NSAttributedString(string: foldLineBreaks(descriptionStringForMessage(contentSettings: context.currentContentSettings.with { $0 }, message: message, strings: strings, nameDisplayOrder: nameDisplayOrder, dateTimeFormat: dateTimeFormat, accountPeerId: accountPeerId).0), font: Font.regular(15.0), textColor: message.media.isEmpty || message.media.first is TelegramMediaWebpage ? theme.chat.inputPanel.primaryTextColor : theme.chat.inputPanel.secondaryTextColor), backgroundColor: nil, maximumNumberOfLines: 1, truncationType: .end, constrainedSize: CGSize(width: width - textLineInset - contentLeftInset - rightInset - textRightInset, height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets(top: 2.0, left: 0.0, bottom: 2.0, right: 0.0)))
+            let (textLayout, textApply) = makeTextLayout(TextNodeLayoutArguments(attributedString: NSAttributedString(string: foldLineBreaks(descriptionStringForMessage(contentSettings: context.currentContentSettings.with { $0 }, message: EngineMessage(message), strings: strings, nameDisplayOrder: nameDisplayOrder, dateTimeFormat: dateTimeFormat, accountPeerId: accountPeerId).0), font: Font.regular(15.0), textColor: message.media.isEmpty || message.media.first is TelegramMediaWebpage ? theme.chat.inputPanel.primaryTextColor : theme.chat.inputPanel.secondaryTextColor), backgroundColor: nil, maximumNumberOfLines: 1, truncationType: .end, constrainedSize: CGSize(width: width - textLineInset - contentLeftInset - rightInset - textRightInset, height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets(top: 2.0, left: 0.0, bottom: 2.0, right: 0.0)))
             
             Queue.mainQueue().async {
                 if let strongSelf = self {

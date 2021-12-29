@@ -184,7 +184,7 @@
     if (_interfaceView == nil)
     {
         __weak TGMediaPickerGalleryModel *weakSelf = self;
-        _interfaceView = [[TGMediaPickerGalleryInterfaceView alloc] initWithContext:_context focusItem:_initialFocusItem selectionContext:_selectionContext editingContext:_editingContext hasSelectionPanel:_hasSelectionPanel hasCameraButton:_hasCamera recipientName:_recipientName];
+        _interfaceView = [[TGMediaPickerGalleryInterfaceView alloc] initWithContext:_context focusItem:_initialFocusItem selectionContext:_selectionContext editingContext:_editingContext stickersContext:_stickersContext hasSelectionPanel:_hasSelectionPanel hasCameraButton:_hasCamera recipientName:_recipientName];
         [_interfaceView setSuggestionContext:_suggestionContext];
         _interfaceView.hasCaptions = _hasCaptions;
         _interfaceView.allowCaptionEntities = _allowCaptionEntities;
@@ -210,7 +210,7 @@
             
             [strongSelf setCurrentItemWithIndex:index];
         };
-        _interfaceView.captionSet = ^(id<TGModernGalleryItem> item, NSString *caption, NSArray *entities)
+        _interfaceView.captionSet = ^(id<TGModernGalleryItem> item, NSAttributedString *caption)
         {
             __strong TGMediaPickerGalleryModel *strongSelf = weakSelf;
             if (strongSelf == nil || strongSelf.saveItemCaption == nil)
@@ -218,7 +218,7 @@
             
             __strong TGModernGalleryController *controller = strongSelf.controller;
             if ([controller.currentItem conformsToProtocol:@protocol(TGModernGalleryEditableItem)])
-                strongSelf.saveItemCaption(((id<TGModernGalleryEditableItem>)item).editableMediaItem, caption, entities);
+                strongSelf.saveItemCaption(((id<TGModernGalleryEditableItem>)item).editableMediaItem, caption);
         };
         _interfaceView.timerRequested = ^
         {
@@ -278,8 +278,9 @@
              }];
         };
         
-        if (iosMajorVersion() >= 11)
+        if (@available(iOS 11.0, *)) {
             _interfaceView.accessibilityIgnoresInvertColors = true;
+        }
     }
     return _interfaceView;
 }
@@ -359,7 +360,7 @@
 
     id<TGMediaEditAdjustments> adjustments = [item.editingContext adjustmentsForItem:item.editableMediaItem];
     
-    NSString *caption = [item.editingContext captionForItem:item.editableMediaItem];
+    NSAttributedString *caption = [item.editingContext captionForItem:item.editableMediaItem];
 
     CGRect refFrame = CGRectZero;
     UIView *editorReferenceView = [self referenceViewForItem:item frame:&refFrame];
@@ -460,14 +461,14 @@
             strongSelf.didFinishRenderingFullSizeImage(editableMediaItem, image);
     };
     
-    controller.captionSet = ^(NSString *caption, NSArray *entities)
+    controller.captionSet = ^(NSAttributedString *caption)
     {
         __strong TGMediaPickerGalleryModel *strongSelf = weakSelf;
         if (strongSelf == nil)
             return;
         
         if (strongSelf.saveItemCaption != nil)
-            strongSelf.saveItemCaption(item.editableMediaItem, caption, entities);
+            strongSelf.saveItemCaption(item.editableMediaItem, caption);
     };
     
     controller.requestToolbarsHidden = ^(bool hidden, bool animated)
@@ -564,8 +565,9 @@
             [_context setStatusBarHidden:false withAnimation:UIStatusBarAnimationNone];
         }
         
-        if (iosMajorVersion() >= 11)
+        if (@available(iOS 11.0, *)) {
             [strongSelf.controller setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+        }
     };
     
     controller.requestThumbnailImage = ^SSignal *(id<TGMediaEditableItem> editableItem)

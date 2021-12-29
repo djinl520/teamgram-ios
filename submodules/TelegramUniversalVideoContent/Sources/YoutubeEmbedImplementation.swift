@@ -285,6 +285,9 @@ final class YoutubeEmbedImplementation: WebEmbedImplementation {
                             }
                         }
                     }
+
+                    let _ = download
+                    let _ = failed
                     
                     if let position = position {
                         if self.ignoreEarlierTimestamps {
@@ -380,7 +383,7 @@ final class YoutubeEmbedImplementation: WebEmbedImplementation {
     }
 }
 
-public struct YoutubeEmbedStoryboardMediaResourceId: MediaResourceId {
+public struct YoutubeEmbedStoryboardMediaResourceId {
     public let videoId: String
     public let storyboardId: Int32
 
@@ -390,14 +393,6 @@ public struct YoutubeEmbedStoryboardMediaResourceId: MediaResourceId {
     
     public var hashValue: Int {
         return self.uniqueId.hashValue
-    }
-    
-    public func isEqual(to: MediaResourceId) -> Bool {
-        if let to = to as? YoutubeEmbedStoryboardMediaResourceId {
-            return self.videoId == to.videoId && self.storyboardId == to.storyboardId
-        } else {
-            return false
-        }
     }
 }
 
@@ -425,7 +420,7 @@ public class YoutubeEmbedStoryboardMediaResource: TelegramMediaResource {
     }
     
     public var id: MediaResourceId {
-        return YoutubeEmbedStoryboardMediaResourceId(videoId: self.videoId, storyboardId: self.storyboardId)
+        return MediaResourceId(YoutubeEmbedStoryboardMediaResourceId(videoId: self.videoId, storyboardId: self.storyboardId).uniqueId)
     }
     
     public func isEqual(to: MediaResource) -> Bool {

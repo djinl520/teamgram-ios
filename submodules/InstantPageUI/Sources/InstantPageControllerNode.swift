@@ -544,7 +544,7 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
                 var itemNode = self.visibleItemsWithNodes[itemIndex]
                 if let currentItemNode = itemNode {
                     if !item.matchesNode(currentItemNode) {
-                        (currentItemNode as! ASDisplayNode).removeFromSupernode()
+                        currentItemNode.removeFromSupernode()
                         self.visibleItemsWithNodes.removeValue(forKey: itemIndex)
                         itemNode = nil
                     }
@@ -619,9 +619,9 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
                         }
                     }
                 } else {
-                    if (itemNode as! ASDisplayNode).frame != itemFrame {
-                        transition.updateFrame(node: (itemNode as! ASDisplayNode), frame: itemFrame)
-                        itemNode?.updateLayout(size: itemFrame.size, transition: transition)
+                    if let itemNode = itemNode, itemNode.frame != itemFrame {
+                        transition.updateFrame(node: itemNode, frame: itemFrame)
+                        itemNode.updateLayout(size: itemFrame.size, transition: transition)
                     }
                 }
                 
@@ -689,9 +689,9 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
         for (index, itemNode) in self.visibleItemsWithNodes {
             if !visibleItemIndices.contains(index) {
                 removeItemIndices.append(index)
-                (itemNode as! ASDisplayNode).removeFromSupernode()
+                itemNode.removeFromSupernode()
             } else {
-                var itemFrame = (itemNode as! ASDisplayNode).frame
+                var itemFrame = itemNode.frame
                 let itemThreshold: CGFloat = 200.0
                 itemFrame.origin.y -= itemThreshold
                 itemFrame.size.height += itemThreshold * 2.0
@@ -725,7 +725,6 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
         }
         
         let bounds = self.scrollNode.view.bounds
-        let contentOffset = self.scrollNode.view.contentOffset
         
         let maxBarHeight: CGFloat
         let minBarHeight: CGFloat
@@ -741,7 +740,7 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
             minBarHeight = 20.0
         }
         
-        var transition: ContainedViewLayoutTransition = .immediate
+        let transition: ContainedViewLayoutTransition = .immediate
         var navigationBarFrame = self.navigationBar.frame
         navigationBarFrame.size.width = bounds.size.width
         if navigationBarFrame.size.height.isZero {
@@ -802,7 +801,7 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
             if let current = self.linkHighlightingNode {
                 linkHighlightingNode = current
             } else {
-                let highlightColor = self.theme?.linkHighlightColor ?? UIColor(rgb: 0x007ee5).withAlphaComponent(0.4)
+                let highlightColor = self.theme?.linkHighlightColor ?? UIColor(rgb: 0x007aff).withAlphaComponent(0.4)
                 linkHighlightingNode = LinkHighlightingNode(color: highlightColor)
                 linkHighlightingNode.isUserInteractionEnabled = false
                 self.linkHighlightingNode = linkHighlightingNode
@@ -1222,7 +1221,7 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
                                     let _ = (strongSelf.context.account.postbox.loadedPeerWithId(peerId)
                                     |> deliverOnMainQueue).start(next: { peer in
                                         if let strongSelf = self {
-                                            if let controller = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, peer: peer, mode: .generic, avatarInitiallyExpanded: false, fromChat: false) {
+                                            if let controller = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, updatedPresentationData: nil, peer: peer, mode: .generic, avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) {
                                                 strongSelf.getNavigationController()?.pushViewController(controller)
                                             }
                                         }
@@ -1277,7 +1276,7 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
             }, openUrl: { _ in }, openPeer: { _ in
             }, showAll: false)
             
-            let peer = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt32Value(0)), accessHash: nil, firstName: "", lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [])
+            let peer = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(0)), accessHash: nil, firstName: "", lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [])
             let message = Message(stableId: 0, stableVersion: 0, id: MessageId(peerId: peer.id, namespace: 0, id: 0), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], forwardInfo: nil, author: peer, text: "", attributes: [], media: [map], peers: SimpleDictionary(), associatedMessages: SimpleDictionary(), associatedMessageIds: [])
             
             let controller = LocationViewController(context: self.context, subject: message, params: controllerParams)
