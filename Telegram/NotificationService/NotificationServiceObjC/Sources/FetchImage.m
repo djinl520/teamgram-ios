@@ -91,18 +91,18 @@ dispatch_block_t fetchImage(BuildConfig *buildConfig, AccountProxyConnection * _
     
     if (account.isTestingEnvironment) {
         seedAddressList = @{
-            @(1): @[@"127.0.0.1"]
+            @(1): @[@"47.103.102.219"]
         };
     } else {
         seedAddressList = @{
-            @(1): @[@"127.0.0.1"]
+            @(1): @[@"47.103.102.219"]
         };
     }
     
     for (NSNumber *datacenterId in seedAddressList) {
         NSMutableArray *addressList = [[NSMutableArray alloc] init];
         for (NSString *host in seedAddressList[datacenterId]) {
-            [addressList addObject:[[MTDatacenterAddress alloc] initWithIp:host port:443 preferForMedia:false restrictToTcp:false cdn:false preferForProxy:false secret:nil]];
+            [addressList addObject:[[MTDatacenterAddress alloc] initWithIp:host port:12443 preferForMedia:false restrictToTcp:false cdn:false preferForProxy:false secret:nil]];
         }
         [context setSeedAddressSetForDatacenterWithId:[datacenterId intValue] seedAddressSet:[[MTDatacenterAddressSet alloc] initWithAddressList:addressList]];
     }
