@@ -977,6 +977,7 @@ extension PresentationThemeChatList: Codable {
         case unreadBadgeActiveText
         case unreadBadgeInactiveBg
         case unreadBadgeInactiveText
+        case reactionBadgeActiveBg
         case pinnedBadge
         case pinnedSearchBar
         case regularSearchBar
@@ -992,6 +993,7 @@ extension PresentationThemeChatList: Codable {
     
     public convenience init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        let codingPath = decoder.codingPath.map { $0.stringValue }.joined(separator: ".")
         self.init(backgroundColor: try decodeColor(values, .bg),
                   itemSeparatorColor: try decodeColor(values, .itemSeparator),
                   itemBackgroundColor: try decodeColor(values, .itemBg),
@@ -1014,6 +1016,7 @@ extension PresentationThemeChatList: Codable {
                   unreadBadgeActiveTextColor: try decodeColor(values, .unreadBadgeActiveText),
                   unreadBadgeInactiveBackgroundColor: try decodeColor(values, .unreadBadgeInactiveBg),
                   unreadBadgeInactiveTextColor: try decodeColor(values, .unreadBadgeInactiveText),
+                  reactionBadgeActiveBackgroundColor: try decodeColor(values, .reactionBadgeActiveBg, fallbackKey: "\(codingPath).unreadBadgeActiveBg"),
                   pinnedBadgeColor: try decodeColor(values, .pinnedBadge),
                   pinnedSearchBarColor: try decodeColor(values, .pinnedSearchBar),
                   regularSearchBarColor: try decodeColor(values, .regularSearchBar),
@@ -1051,6 +1054,7 @@ extension PresentationThemeChatList: Codable {
         try encodeColor(&values, self.unreadBadgeActiveTextColor, .unreadBadgeActiveText)
         try encodeColor(&values, self.unreadBadgeInactiveBackgroundColor, .unreadBadgeInactiveBg)
         try encodeColor(&values, self.unreadBadgeInactiveTextColor, .unreadBadgeInactiveText)
+        try encodeColor(&values, self.reactionBadgeActiveBackgroundColor, .reactionBadgeActiveBg)
         try encodeColor(&values, self.pinnedBadgeColor, .pinnedBadge)
         try encodeColor(&values, self.pinnedSearchBarColor, .pinnedSearchBar)
         try encodeColor(&values, self.regularSearchBarColor, .regularSearchBar)
@@ -1097,6 +1101,11 @@ extension PresentationThemeBubbleColorComponents: Codable {
         case stroke
         case shadow
         case bgList
+        case reactionInactiveBg
+        case reactionInactiveFg
+        case reactionActiveBg
+        case reactionActiveFg
+        case __workaroundNonexistingKey
     }
     
     public convenience init(from decoder: Decoder) throws {
@@ -1117,12 +1126,51 @@ extension PresentationThemeBubbleColorComponents: Codable {
 
             fill = [fillColor, gradientColor]
         }
-
+        
+        let fallbackKeyPrefix: String
+        if codingPath.hasPrefix("chat.message.incoming.") {
+            fallbackKeyPrefix = "chat.message.incoming."
+        } else {
+            fallbackKeyPrefix = "chat.message.outgoing."
+        }
+        
+        let reactionInactiveBackground: UIColor
+        if let color = try? decodeColor(values, .reactionInactiveBg) {
+            reactionInactiveBackground = color
+        } else {
+            reactionInactiveBackground = (try decodeColor(values, .__workaroundNonexistingKey, fallbackKey: "\(fallbackKeyPrefix).accentControl")).withMultipliedAlpha(0.1)
+        }
+        
+        let reactionInactiveForeground: UIColor
+        if let color = try? decodeColor(values, .reactionInactiveFg) {
+            reactionInactiveForeground = color
+        } else {
+            reactionInactiveForeground = try decodeColor(values, .__workaroundNonexistingKey, fallbackKey: "\(fallbackKeyPrefix).accentControl")
+        }
+        
+        let reactionActiveBackground: UIColor
+        if let color = try? decodeColor(values, .reactionActiveBg) {
+            reactionActiveBackground = color
+        } else {
+            reactionActiveBackground = try decodeColor(values, .__workaroundNonexistingKey, fallbackKey: "\(fallbackKeyPrefix).accentControl")
+        }
+        
+        let reactionActiveForeground: UIColor
+        if let color = try? decodeColor(values, .reactionActiveFg) {
+            reactionActiveForeground = color
+        } else {
+            reactionActiveForeground = .clear
+        }
+        
         self.init(
             fill: fill,
             highlightedFill: try decodeColor(values, .highlightedBg),
             stroke: try decodeColor(values, .stroke),
-            shadow: try? values.decode(PresentationThemeBubbleShadow.self, forKey: .shadow)
+            shadow: try? values.decode(PresentationThemeBubbleShadow.self, forKey: .shadow),
+            reactionInactiveBackground: reactionInactiveBackground,
+            reactionInactiveForeground: reactionInactiveForeground,
+            reactionActiveBackground: reactionActiveBackground,
+            reactionActiveForeground: reactionActiveForeground
         )
     }
     
@@ -1141,6 +1189,10 @@ extension PresentationThemeBubbleColorComponents: Codable {
         }
         try encodeColor(&values, self.highlightedFill, .highlightedBg)
         try encodeColor(&values, self.stroke, .stroke)
+        try encodeColor(&values, self.reactionInactiveBackground, .reactionInactiveBg)
+        try encodeColor(&values, self.reactionInactiveForeground, .reactionInactiveFg)
+        try encodeColor(&values, self.reactionActiveBackground, .reactionActiveBg)
+        try encodeColor(&values, self.reactionActiveForeground, .reactionActiveFg)
     }
 }
 

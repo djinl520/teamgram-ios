@@ -705,7 +705,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             UINavigationController.attemptRotationToDeviceOrientation()
         })
 
-        let accountManager = AccountManager<TelegramAccountManagerTypes>(basePath: rootPath + "/accounts-metadata", isTemporary: false, isReadOnly: false, useCaches: true)
+        let accountManager = AccountManager<TelegramAccountManagerTypes>(basePath: rootPath + "/accounts-metadata", isTemporary: false, isReadOnly: false, useCaches: true, removeDatabaseOnError: true)
         self.accountManager = accountManager
 
         telegramUIDeclareEncodables()
@@ -827,7 +827,13 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             |> mapToSignal { context -> Signal<AccountRecordId?, NoError> in
                 if let context = context, let liveLocationManager = context.context.liveLocationManager {
                     let accountId = context.context.account.id
-                    return liveLocationManager.isPolling
+                    return combineLatest(queue: .mainQueue(),
+                        liveLocationManager.isPolling,
+                        liveLocationManager.hasBackgroundTasks
+                    )
+                    |> map { isPolling, hasBackgroundTasks -> Bool in
+                        return isPolling || hasBackgroundTasks
+                    }
                     |> distinctUntilChanged
                     |> map { value -> AccountRecordId? in
                         if value {
@@ -1220,8 +1226,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         if let url = launchOptions?[.url] {
             if let url = url as? URL, url.scheme == "tg" || url.scheme == buildConfig.appSpecificUrlScheme {
-                self.openUrlWhenReady(url: url.absoluteString)
-            } else if let url = url as? String, url.lowercased().hasPrefix("tg:") || url.lowercased().hasPrefix("\(buildConfig.appSpecificUrlScheme):") {
+                self.openUrlWhenReady(url: url)
+            } else if let urlString = url as? String, urlString.lowercased().hasPrefix("tg:") || urlString.lowercased().hasPrefix("\(buildConfig.appSpecificUrlScheme):"), let url = URL(string: urlString) {
                 self.openUrlWhenReady(url: url)
             }
         }
@@ -1272,6 +1278,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
 
     private func resetBadge() {
+        var resetOnce = true
         self.badgeDisposable.set((self.context.get()
         |> mapToSignal { context -> Signal<Int32, NoError> in
             if let context = context {
@@ -1281,6 +1288,12 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
         }
         |> deliverOnMainQueue).start(next: { count in
+            if resetOnce {
+                resetOnce = false
+                if count == 0 {
+                    UIApplication.shared.applicationIconBadgeNumber = 1
+                }
+            }
             UIApplication.shared.applicationIconBadgeNumber = Int(count)
         }))
     }
@@ -1618,6 +1631,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
     
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        guard self.openUrlInProgress != url else {
+            return true
+        }
+        
         self.openUrl(url: url)
         return true
     }
@@ -1907,12 +1924,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }))
     }
     
-    private func openUrlWhenReady(url: String) {
+    private var openUrlInProgress: URL?
+    private func openUrlWhenReady(url: URL) {
+        self.openUrlInProgress = url
+        
         self.openUrlWhenReadyDisposable.set((self.authorizedContext()
         |> take(1)
-        |> deliverOnMainQueue).start(next: { context in
-            let presentationData = context.context.sharedContext.currentPresentationData.with { $0 }
-            context.context.sharedContext.openExternalUrl(context: context.context, urlContext: .generic, url: url, forceExternal: false, presentationData: presentationData, navigationController: context.rootController, dismissInput: {
+        |> deliverOnMainQueue).start(next: { [weak self] context in
+            context.openUrl(url)
+            
+            Queue.mainQueue().after(1.0, {
+                self?.openUrlInProgress = nil
             })
         }))
     }
@@ -2028,7 +2050,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                             if result {
                                 Queue.mainQueue().async {
                                     let reply = UNTextInputNotificationAction(identifier: "reply", title: replyString, options: [], textInputButtonTitle: replyString, textInputPlaceholder: messagePlaceholderString)
-                                    
+                                                                        
                                     let unknownMessageCategory: UNNotificationCategory
                                     let replyMessageCategory: UNNotificationCategory
                                     let replyLegacyMessageCategory: UNNotificationCategory

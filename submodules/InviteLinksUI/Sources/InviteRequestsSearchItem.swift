@@ -301,7 +301,7 @@ struct InviteRequestsSearchContainerTransition {
     let query: String
 }
 
-private func InviteRequestsSearchContainerPreparedRecentTransition(from fromEntries: [InviteRequestsSearchEntry], to toEntries: [InviteRequestsSearchEntry], isSearching: Bool, isEmpty: Bool, query: String, context: AccountContext, presentationData: PresentationData, nameSortOrder: PresentationPersonNameOrder, nameDisplayOrder: PresentationPersonNameOrder, interaction: InviteRequestsSearchContainerInteraction) -> InviteRequestsSearchContainerTransition {
+private func inviteRequestsSearchContainerPreparedRecentTransition(from fromEntries: [InviteRequestsSearchEntry], to toEntries: [InviteRequestsSearchEntry], isSearching: Bool, isEmpty: Bool, query: String, context: AccountContext, presentationData: PresentationData, nameSortOrder: PresentationPersonNameOrder, nameDisplayOrder: PresentationPersonNameOrder, interaction: InviteRequestsSearchContainerInteraction) -> InviteRequestsSearchContainerTransition {
     let (deleteIndices, indicesAndItems, updateIndices) = mergeListsStableWithUpdates(leftList: fromEntries, rightList: toEntries)
     
     let deletions = deleteIndices.map { ListViewDeleteItem(index: $0, directionHint: nil) }
@@ -456,7 +456,7 @@ public final class InviteRequestsSearchContainerNode: SearchDisplayControllerCon
         //            dismissPromise.set(true)
         //        }
                 
-                let contextController = ContextController(account: context.account, presentationData: presentationData, source: .extracted(source), items: .single(ContextController.Items(items: items)), gesture: gesture)
+                let contextController = ContextController(account: context.account, presentationData: presentationData, source: .extracted(source), items: .single(ContextController.Items(content: .list(items))), gesture: gesture)
                 presentInGlobalOverlay(contextController)
             })
         })
@@ -534,7 +534,7 @@ public final class InviteRequestsSearchContainerNode: SearchDisplayControllerCon
                 let previousEntries = previousSearchItems.swap(entries)
                 updateActivity(false)
                 let firstTime = previousEntries == nil
-                let transition = InviteRequestsSearchContainerPreparedRecentTransition(from: previousEntries ?? [], to: entries ?? [], isSearching: entries != nil, isEmpty: entries?.isEmpty ?? false, query: query ?? "", context: context, presentationData: presentationData, nameSortOrder: presentationData.nameSortOrder, nameDisplayOrder: presentationData.nameDisplayOrder, interaction: interaction)
+                let transition = inviteRequestsSearchContainerPreparedRecentTransition(from: previousEntries ?? [], to: entries ?? [], isSearching: entries != nil, isEmpty: entries?.isEmpty ?? false, query: query ?? "", context: context, presentationData: presentationData, nameSortOrder: presentationData.nameSortOrder, nameDisplayOrder: presentationData.nameDisplayOrder, interaction: interaction)
                 strongSelf.enqueueTransition(transition, firstTime: firstTime)
             }
         }))

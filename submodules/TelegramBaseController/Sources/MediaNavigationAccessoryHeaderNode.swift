@@ -53,7 +53,9 @@ private class MediaHeaderItemNode: ASDisplayNode {
                     let titleText: String = author.flatMap(EnginePeer.init)?.displayTitle(strings: strings, displayOrder: nameDisplayOrder) ?? ""
                     let subtitleText: String
                     if let peer = peer {
-                        if peer is TelegramGroup || peer is TelegramChannel {
+                        if let peer = peer as? TelegramChannel, case .broadcast = peer.info {
+                            subtitleText = strings.MusicPlayer_VoiceNote
+                        } else if peer is TelegramGroup || peer is TelegramChannel {
                             subtitleText = EnginePeer(peer).displayTitle(strings: strings, displayOrder: nameDisplayOrder)
                         } else {
                             subtitleText = strings.MusicPlayer_VoiceNote
@@ -555,7 +557,7 @@ public final class MediaNavigationAccessoryHeaderNode: ASDisplayNode, UIScrollVi
             return
         }
         let items: Signal<[ContextMenuItem], NoError> = self.contextMenuSpeedItems()
-        let contextController = ContextController(account: self.context.account, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, source: .reference(HeaderContextReferenceContentSource(controller: controller, sourceNode: self.rateButton.referenceNode, shouldBeDismissed: self.dismissedPromise.get())), items: items |> map { ContextController.Items(items: $0) }, gesture: gesture)
+        let contextController = ContextController(account: self.context.account, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, source: .reference(HeaderContextReferenceContentSource(controller: controller, sourceNode: self.rateButton.referenceNode, shouldBeDismissed: self.dismissedPromise.get())), items: items |> map { ContextController.Items(content: .list($0)) }, gesture: gesture)
         
         self.presentInGlobalOverlay?(contextController)
     }
@@ -780,6 +782,6 @@ private final class HeaderContextReferenceContentSource: ContextReferenceContent
     }
     
     func transitionInfo() -> ContextControllerReferenceViewInfo? {
-        return ContextControllerReferenceViewInfo(referenceNode: self.sourceNode, contentAreaInScreenSpace: UIScreen.main.bounds)
+        return ContextControllerReferenceViewInfo(referenceView: self.sourceNode.view, contentAreaInScreenSpace: UIScreen.main.bounds)
     }
 }

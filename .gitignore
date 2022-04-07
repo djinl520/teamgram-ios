@@ -61,10 +61,4 @@ bazel-testlogs
 bazel-testlogs/*
 */*.swp
 *.swp
-build-input/data
-build-input/data/*
-build-input/gen
-build-input/gen/*
-bazel-teamgram-ios
-build-system/Make/__pycache__/BuildEnvironment.cpython-39.pyc
-build-system/Make/__pycache__/ProjectGeneration.cpython-39.pyc
+build-input/*

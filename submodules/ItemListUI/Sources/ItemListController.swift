@@ -174,6 +174,13 @@ open class ItemListController: ViewController, KeyShortcutResponder, Presentable
         }
     }
     
+    public var visibleBottomContentOffset: ListViewVisibleContentOffset {
+        if self.isNodeLoaded {
+            return (self.displayNode as! ItemListControllerNode).listNode.visibleBottomContentOffset()
+        } else {
+            return .unknown
+        }
+    }
     public var visibleBottomContentOffsetChanged: ((ListViewVisibleContentOffset) -> Void)? {
         didSet {
             if self.isNodeLoaded {
@@ -202,6 +209,14 @@ open class ItemListController: ViewController, KeyShortcutResponder, Presentable
         didSet {
             if self.isNodeLoaded {
                 (self.displayNode as! ItemListControllerNode).searchActivated = self.searchActivated
+            }
+        }
+    }
+    
+    public var didScrollWithOffset: ((CGFloat, ContainedViewLayoutTransition, ListViewItemNode?) -> Void)? {
+        didSet {
+            if self.isNodeLoaded {
+                (self.displayNode as! ItemListControllerNode).listNode.didScrollWithOffset = self.didScrollWithOffset
             }
         }
     }
@@ -471,6 +486,7 @@ open class ItemListController: ViewController, KeyShortcutResponder, Presentable
         displayNode.reorderEntry = self.reorderEntry
         displayNode.reorderCompleted = self.reorderCompleted
         displayNode.listNode.experimentalSnapScrollToItem = self.experimentalSnapScrollToItem
+        displayNode.listNode.didScrollWithOffset = self.didScrollWithOffset
         displayNode.requestLayout = { [weak self] transition in
             self?.requestLayout(transition: transition)
         }

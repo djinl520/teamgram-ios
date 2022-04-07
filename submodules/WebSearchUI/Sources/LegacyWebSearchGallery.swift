@@ -251,7 +251,7 @@ func legacyWebSearchItem(account: Account, result: ChatContextResult) -> LegacyW
             switch status {
                 case .Local:
                     return 1.0
-                case .Remote:
+                case .Remote, .Paused:
                     return 0.027
                 case let .Fetching(_, progress):
                     return max(progress, 0.1)
@@ -312,11 +312,14 @@ private func galleryItems(account: Account, results: [ChatContextResult], curren
     return (galleryItems, focusItem)
 }
 
-func presentLegacyWebSearchGallery(context: AccountContext, peer: EnginePeer?, chatLocation: ChatLocation?, presentationData: PresentationData, results: [ChatContextResult], current: ChatContextResult, selectionContext: TGMediaSelectionContext?, editingContext: TGMediaEditingContext, updateHiddenMedia: @escaping (String?) -> Void, initialLayout: ContainerViewLayout?, transitionHostView: @escaping () -> UIView?, transitionView: @escaping (ChatContextResult) -> UIView?, completed: @escaping (ChatContextResult) -> Void, presentStickers: ((@escaping (TelegramMediaFile, Bool, UIView, CGRect) -> Void) -> TGPhotoPaintStickersScreen?)?, present: (ViewController, Any?) -> Void) {
+func presentLegacyWebSearchGallery(context: AccountContext, peer: EnginePeer?, chatLocation: ChatLocation?, presentationData: PresentationData, results: [ChatContextResult], current: ChatContextResult, selectionContext: TGMediaSelectionContext?, editingContext: TGMediaEditingContext, updateHiddenMedia: @escaping (String?) -> Void, initialLayout: ContainerViewLayout?, transitionHostView: @escaping () -> UIView?, transitionView: @escaping (ChatContextResult) -> UIView?, completed: @escaping (ChatContextResult) -> Void, presentStickers: ((@escaping (TelegramMediaFile, Bool, UIView, CGRect) -> Void) -> TGPhotoPaintStickersScreen?)?, getCaptionPanelView: @escaping () -> TGCaptionPanelView?, present: (ViewController, Any?) -> Void) {
     let legacyController = LegacyController(presentation: .custom, theme: presentationData.theme, initialLayout: nil)
     legacyController.statusBar.statusBarStyle = presentationData.theme.rootController.statusBarStyle.style
     
     let paintStickersContext = LegacyPaintStickersContext(context: context)
+    paintStickersContext.captionPanelView = {
+        return getCaptionPanelView()
+    }
     paintStickersContext.presentStickersController = { completion in
         if let presentStickers = presentStickers {
             return presentStickers({ file, animated, view, rect in
@@ -337,9 +340,6 @@ func presentLegacyWebSearchGallery(context: AccountContext, peer: EnginePeer?, c
     
     let model = TGMediaPickerGalleryModel(context: legacyController.context, items: items, focus: focusItem, selectionContext: selectionContext, editingContext: editingContext, hasCaptions: false, allowCaptionEntities: true, hasTimer: false, onlyCrop: false, inhibitDocumentCaptions: false, hasSelectionPanel: false, hasCamera: false, recipientName: peer?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder))!
     model.stickersContext = paintStickersContext
-    if let peer = peer, let chatLocation = chatLocation {
-        model.suggestionContext = legacySuggestionContext(context: context, peerId: peer.id, chatLocation: chatLocation)
-    }
     controller.model = model
     model.controller = controller
     model.useGalleryImageAsEditableItemImage = true

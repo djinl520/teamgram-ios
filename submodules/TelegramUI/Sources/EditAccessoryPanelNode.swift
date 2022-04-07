@@ -12,6 +12,7 @@ import AccountContext
 import RadialStatusNode
 import PhotoResources
 import TelegramStringFormatting
+import ChatPresentationInterfaceState
 
 final class EditAccessoryPanelNode: AccessoryPanelNode {
     let dateTimeFormat: PresentationDateTimeFormat
@@ -169,7 +170,7 @@ final class EditAccessoryPanelNode: AccessoryPanelNode {
             if let currentEditMediaReference = self.currentEditMediaReference {
                 effectiveMessage = effectiveMessage.withUpdatedMedia([currentEditMediaReference.media])
             }
-            (text, _) = descriptionStringForMessage(contentSettings: context.currentContentSettings.with { $0 }, message: EngineMessage(effectiveMessage), strings: self.strings, nameDisplayOrder: self.nameDisplayOrder, dateTimeFormat: self.dateTimeFormat, accountPeerId: self.context.account.peerId)
+            (text, _, _) = descriptionStringForMessage(contentSettings: context.currentContentSettings.with { $0 }, message: EngineMessage(effectiveMessage), strings: self.strings, nameDisplayOrder: self.nameDisplayOrder, dateTimeFormat: self.dateTimeFormat, accountPeerId: self.context.account.peerId)
         }
         
         var updatedMediaReference: AnyMediaReference?
@@ -226,7 +227,7 @@ final class EditAccessoryPanelNode: AccessoryPanelNode {
                     if fileReference.media.isVideo {
                         updateImageSignal = chatMessageVideoThumbnail(account: self.context.account, fileReference: fileReference)
                     } else if let iconImageRepresentation = smallestImageRepresentation(fileReference.media.previewRepresentations) {
-                        updateImageSignal = chatWebpageSnippetFile(account: self.context.account, fileReference: fileReference, representation: iconImageRepresentation)
+                        updateImageSignal = chatWebpageSnippetFile(account: self.context.account, mediaReference: fileReference.abstract, representation: iconImageRepresentation)
                     }
                 }
             } else {

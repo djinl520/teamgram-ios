@@ -18,6 +18,7 @@ import GalleryUI
 import OverlayStatusController
 import PresentationDataUtils
 import ChatInterfaceState
+import ChatPresentationInterfaceState
 
 struct PeerSpecificPackData {
     let peer: Peer
@@ -1465,7 +1466,7 @@ final class ChatMediaInputNode: ChatInputNode {
             
             let presentationData = strongSelf.context.sharedContext.currentPresentationData.with { $0 }
             
-            let contextController = ContextController(account: strongSelf.context.account, presentationData: presentationData, source: .controller(ContextControllerContentSourceImpl(controller: gallery, sourceNode: sourceNode, sourceRect: sourceRect)), items: .single(ContextController.Items(items: items)), gesture: gesture)
+            let contextController = ContextController(account: strongSelf.context.account, presentationData: presentationData, source: .controller(ContextControllerContentSourceImpl(controller: gallery, sourceNode: sourceNode, sourceRect: sourceRect)), items: .single(ContextController.Items(content: .list(items))), gesture: gesture)
             strongSelf.controllerInteraction.presentGlobalOverlayController(contextController, nil)
         })
     }

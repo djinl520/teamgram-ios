@@ -140,6 +140,10 @@
             if (strongSelf == nil)
                 return;
             
+            strongSelf->_ignoreSelectionUpdates = true;
+            [strongSelf->_selectionChangedDisposable dispose];
+            [strongSelf->_itemSelectedDisposable dispose];
+            
             [strongSelf.window endEditing:true];
             strongSelf->_portraitToolbarView.doneButton.userInteractionEnabled = false;
             strongSelf->_landscapeToolbarView.doneButton.userInteractionEnabled = false;
@@ -343,13 +347,13 @@
         _captionMixin.stickersContext = stickersContext;
         [_captionMixin createInputPanelIfNeeded];
         
-        _portraitToolbarView = [[TGPhotoToolbarView alloc] initWithBackButton:TGPhotoEditorBackButtonBack doneButton:TGPhotoEditorDoneButtonSend solidBackground:false];
+        _portraitToolbarView = [[TGPhotoToolbarView alloc] initWithContext:_context backButton:TGPhotoEditorBackButtonBack doneButton:TGPhotoEditorDoneButtonSend solidBackground:false];
         _portraitToolbarView.cancelPressed = toolbarCancelPressed;
         _portraitToolbarView.donePressed = toolbarDonePressed;
         _portraitToolbarView.doneLongPressed = toolbarDoneLongPressed;
         [_wrapperView addSubview:_portraitToolbarView];
         
-        _landscapeToolbarView = [[TGPhotoToolbarView alloc] initWithBackButton:TGPhotoEditorBackButtonBack doneButton:TGPhotoEditorDoneButtonSend solidBackground:false];
+        _landscapeToolbarView = [[TGPhotoToolbarView alloc] initWithContext:_context backButton:TGPhotoEditorBackButtonBack doneButton:TGPhotoEditorDoneButtonSend solidBackground:false];
         _landscapeToolbarView.cancelPressed = toolbarCancelPressed;
         _landscapeToolbarView.donePressed = toolbarDonePressed;
         _landscapeToolbarView.doneLongPressed = toolbarDoneLongPressed;
@@ -425,11 +429,6 @@
 {
     _allowCaptionEntities = allowCaptionEntities;
     _captionMixin.allowEntities = allowCaptionEntities;
-}
-
-- (void)setSuggestionContext:(TGSuggestionContext *)suggestionContext
-{
-    _captionMixin.suggestionContext = suggestionContext;
 }
 
 - (void)setClosePressed:(void (^)())closePressed
@@ -1651,7 +1650,7 @@
                 
                 _selectedPhotosView.frame = CGRectMake(screenEdges.left + TGPhotoEditorToolbarSize + 66 + _safeAreaInset.left, screenEdges.top + 4 + headerInset, photosViewSize, self.frame.size.height - 4 * 2 - headerInset);
                 
-                _landscapeToolbarView.frame = CGRectMake(screenEdges.left, screenEdges.top, TGPhotoEditorToolbarSize + _safeAreaInset.left, self.frame.size.height);
+                _landscapeToolbarView.frame = CGRectMake(screenEdges.left + _safeAreaInset.left, screenEdges.top, TGPhotoEditorToolbarSize + _safeAreaInset.left, self.frame.size.height);
             }];
             
             _headerWrapperView.frame = CGRectMake(screenEdges.left + TGPhotoEditorToolbarSize + _safeAreaInset.left, screenEdges.top, self.frame.size.width - TGPhotoEditorToolbarSize - _safeAreaInset.left, 64);

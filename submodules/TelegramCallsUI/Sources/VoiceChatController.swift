@@ -240,7 +240,15 @@ struct VoiceChatPeerEntry: Identifiable {
     }
 }
 
-public final class VoiceChatController: ViewController {
+public protocol VoiceChatController: ViewController {
+    var call: PresentationGroupCall { get }
+    var currentOverlayController: VoiceChatOverlayController? { get }
+    var parentNavigationController: NavigationController? { get set }
+    
+    func dismiss(closing: Bool, manual: Bool)
+}
+
+public final class VoiceChatControllerImpl: ViewController, VoiceChatController {
     enum DisplayMode {
         case modal(isExpanded: Bool, isFilled: Bool)
         case fullscreen(controlsHidden: Bool)
@@ -748,7 +756,7 @@ public final class VoiceChatController: ViewController {
         
         private var configuration: VoiceChatConfiguration?
         
-        private weak var controller: VoiceChatController?
+        private weak var controller: VoiceChatControllerImpl?
         private let sharedContext: SharedAccountContext
         private let context: AccountContext
         private let call: PresentationGroupCall
@@ -952,7 +960,7 @@ public final class VoiceChatController: ViewController {
 
         private var statsDisposable: Disposable?
         
-        init(controller: VoiceChatController, sharedContext: SharedAccountContext, call: PresentationGroupCall) {
+        init(controller: VoiceChatControllerImpl, sharedContext: SharedAccountContext, call: PresentationGroupCall) {
             self.controller = controller
             self.sharedContext = sharedContext
             self.context = call.accountContext
@@ -1791,7 +1799,7 @@ public final class VoiceChatController: ViewController {
                     dismissPromise.set(true)
                 }
                 
-                let contextController = ContextController(account: strongSelf.context.account, presentationData: strongSelf.presentationData.withUpdated(theme: strongSelf.darkTheme), source: .extracted(source), items: items |> map { ContextController.Items(items: $0) }, gesture: gesture)
+                let contextController = ContextController(account: strongSelf.context.account, presentationData: strongSelf.presentationData.withUpdated(theme: strongSelf.darkTheme), source: .extracted(source), items: items |> map { ContextController.Items(content: .list($0)) }, gesture: gesture)
                 contextController.useComplexItemsTransitionAnimation = true
                 strongSelf.controller?.presentInGlobalOverlay(contextController)
             }, getPeerVideo: { [weak self] endpointId, position in
@@ -2463,7 +2471,7 @@ public final class VoiceChatController: ViewController {
         private func openSettingsMenu(sourceNode: ASDisplayNode, gesture: ContextGesture?) {
             let items: Signal<[ContextMenuItem], NoError> = self.contextMenuMainItems()
             if let controller = self.controller {
-                let contextController = ContextController(account: self.context.account, presentationData: self.presentationData.withUpdated(theme: self.darkTheme), source: .reference(VoiceChatContextReferenceContentSource(controller: controller, sourceNode: self.optionsButton.referenceNode)), items: items |> map { ContextController.Items(items: $0) }, gesture: gesture)
+                let contextController = ContextController(account: self.context.account, presentationData: self.presentationData.withUpdated(theme: self.darkTheme), source: .reference(VoiceChatContextReferenceContentSource(controller: controller, sourceNode: self.optionsButton.referenceNode)), items: items |> map { ContextController.Items(content: .list($0)) }, gesture: gesture)
                 controller.presentInGlobalOverlay(contextController)
             }
         }
@@ -2492,7 +2500,7 @@ public final class VoiceChatController: ViewController {
                                 guard let strongSelf = self else {
                                     return
                                 }
-                                c.setItems(strongSelf.contextMenuDisplayAsItems() |> map { ContextController.Items(items: $0) }, minHeight: nil)
+                                c.setItems(strongSelf.contextMenuDisplayAsItems() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil)
                             })))
                             items.append(.separator)
                             break
@@ -2525,7 +2533,7 @@ public final class VoiceChatController: ViewController {
                         guard let strongSelf = self else {
                             return
                         }
-                        c.setItems(strongSelf.contextMenuAudioItems() |> map { ContextController.Items(items: $0) }, minHeight: nil)
+                        c.setItems(strongSelf.contextMenuAudioItems() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil)
                     })))
                 }
 
@@ -2562,7 +2570,7 @@ public final class VoiceChatController: ViewController {
                             guard let strongSelf = self else {
                                 return
                             }
-                            c.setItems(strongSelf.contextMenuPermissionItems() |> map { ContextController.Items(items: $0) }, minHeight: nil)
+                            c.setItems(strongSelf.contextMenuPermissionItems() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil)
                         })))
                     }
                 }
@@ -2832,7 +2840,7 @@ public final class VoiceChatController: ViewController {
                 guard let strongSelf = self else {
                     return
                 }
-                c.setItems(strongSelf.contextMenuMainItems() |> map { ContextController.Items(items: $0) }, minHeight: nil)
+                c.setItems(strongSelf.contextMenuMainItems() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil)
             })))
             return .single(items)
         }
@@ -2927,7 +2935,7 @@ public final class VoiceChatController: ViewController {
                     guard let strongSelf = self else {
                         return
                     }
-                    c.setItems(strongSelf.contextMenuMainItems() |> map { ContextController.Items(items: $0) }, minHeight: nil)
+                    c.setItems(strongSelf.contextMenuMainItems() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil)
                 })))
                 return items
             }
@@ -2973,7 +2981,7 @@ public final class VoiceChatController: ViewController {
                     guard let strongSelf = self else {
                         return
                     }
-                    c.setItems(strongSelf.contextMenuMainItems() |> map { ContextController.Items(items: $0) }, minHeight: nil)
+                    c.setItems(strongSelf.contextMenuMainItems() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil)
                 })))
             }
             return .single(items)
@@ -7082,6 +7090,6 @@ private final class VoiceChatContextReferenceContentSource: ContextReferenceCont
     }
     
     func transitionInfo() -> ContextControllerReferenceViewInfo? {
-        return ContextControllerReferenceViewInfo(referenceNode: self.sourceNode, contentAreaInScreenSpace: UIScreen.main.bounds)
+        return ContextControllerReferenceViewInfo(referenceView: self.sourceNode.view, contentAreaInScreenSpace: UIScreen.main.bounds)
     }
 }
