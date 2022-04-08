@@ -396,7 +396,7 @@ public extension WidgetPresentationData {
         autodeleteTimerUpdated: "Auto-delete timer updated",
         autodeleteTimerRemoved: "Auto-delete timer disabled",
         generalLockedTitle: "Locked",
-        generalLockedText: "Open Telegram and enter passcode to edit widget.",
+        generalLockedText: "Open Teamgram and enter passcode to edit widget.",
         chatSavedMessages: "Saved Messages"
     )
 }
