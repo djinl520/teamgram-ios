@@ -529,6 +529,11 @@ public final class Transaction {
         return self.postbox?.updateMedia(id, update: update) ?? Set()
     }
     
+    public func storeMediaIfNotPresent(media: Media) {
+        assert(!self.disposed)
+        self.postbox?.storeMediaIfNotPresent(media: media)
+    }
+    
     public func replaceItemCollections(namespace: ItemCollectionId.Namespace, itemCollections: [(ItemCollectionId, ItemCollectionInfo, [ItemCollectionItem])]) {
         assert(!self.disposed)
         self.postbox?.replaceItemCollections(namespace: namespace, itemCollections: itemCollections)
@@ -735,14 +740,22 @@ public final class Transaction {
         return Set()
     }
     
+    public func filterStoredMediaIds(namespace: MediaId.Namespace, ids: Set<Int64>) -> Set<Int64> {
+        assert(!self.disposed)
+        if let postbox = self.postbox {
+            return postbox.filterStoredMediaIds(namespace: namespace, ids: ids)
+        }
+        return Set()
+    }
+    
     public func storedMessageId(peerId: PeerId, namespace: MessageId.Namespace, timestamp: Int32) -> MessageId? {
         assert(!self.disposed)
         return self.postbox?.storedMessageId(peerId: peerId, namespace: namespace, timestamp: timestamp)
     }
     
-    public func putItemCacheEntry(id: ItemCacheEntryId, entry: CodableEntry, collectionSpec: ItemCacheCollectionSpec) {
+    public func putItemCacheEntry(id: ItemCacheEntryId, entry: CodableEntry) {
         assert(!self.disposed)
-        self.postbox?.putItemCacheEntry(id: id, entry: entry, collectionSpec: collectionSpec)
+        self.postbox?.putItemCacheEntry(id: id, entry: entry)
     }
     
     public func removeItemCacheEntry(id: ItemCacheEntryId) {
@@ -2107,7 +2120,7 @@ final class PostboxImpl {
         return indices.max()
     }
     
-    fileprivate func getPeerChatListInclusion(_ id: PeerId) -> PeerChatListInclusion {
+    func getPeerChatListInclusion(_ id: PeerId) -> PeerChatListInclusion {
         if let inclusion = self.currentUpdatedChatListInclusions[id] {
             return inclusion
         } else {
@@ -2295,6 +2308,10 @@ final class PostboxImpl {
         return updatedMessageIndices
     }
     
+    fileprivate func storeMediaIfNotPresent(media: Media) {
+        self.messageHistoryTable.storeMediaIfNotPresent(media: media)
+    }
+    
     fileprivate func replaceItemCollections(namespace: ItemCollectionId.Namespace, itemCollections: [(ItemCollectionId, ItemCollectionInfo, [ItemCollectionItem])]) {
         var infos: [(ItemCollectionId, ItemCollectionInfo)] = []
         for (id, info, items) in itemCollections {
@@ -2343,6 +2360,18 @@ final class PostboxImpl {
         return filteredIds
     }
     
+    fileprivate func filterStoredMediaIds(namespace: MediaId.Namespace, ids: Set<Int64>) -> Set<Int64> {
+        var filteredIds = Set<Int64>()
+        
+        for id in ids {
+            if !self.mediaTable.exists(id: MediaId(namespace: namespace, id: id)) {
+                filteredIds.insert(id)
+            }
+        }
+        
+        return filteredIds
+    }
+    
     fileprivate func storedMessageId(peerId: PeerId, namespace: MessageId.Namespace, timestamp: Int32) -> MessageId? {
         if let id = self.messageHistoryTable.findMessageId(peerId: peerId, namespace: namespace, timestamp: timestamp), id.namespace == namespace {
             return id
@@ -2351,7 +2380,7 @@ final class PostboxImpl {
         }
     }
     
-    fileprivate func putItemCacheEntry(id: ItemCacheEntryId, entry: CodableEntry, collectionSpec: ItemCacheCollectionSpec) {
+    fileprivate func putItemCacheEntry(id: ItemCacheEntryId, entry: CodableEntry) {
         self.itemCacheTable.put(id: id, entry: entry, metaTable: self.itemCacheMetaTable)
         self.currentUpdatedCacheEntryKeys.insert(id)
     }

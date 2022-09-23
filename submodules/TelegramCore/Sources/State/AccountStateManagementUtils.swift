@@ -1048,12 +1048,16 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                         let messageText = text
                         var medias: [Media] = []
                         
-                        let (mediaValue, expirationTimer) = textMediaAndExpirationTimerFromApiMedia(media, peerId)
+                        let (mediaValue, expirationTimer, nonPremium) = textMediaAndExpirationTimerFromApiMedia(media, peerId)
                         if let mediaValue = mediaValue {
                             medias.append(mediaValue)
                         }
                         if let expirationTimer = expirationTimer {
                             attributes.append(AutoclearTimeoutMessageAttribute(timeout: expirationTimer, countdownBeginTime: nil))
+                        }
+                        
+                        if let nonPremium = nonPremium, nonPremium {
+                            attributes.append(NonPremiumMessageAttribute())
                         }
                         
                         if type.hasPrefix("auth") {
@@ -1101,6 +1105,9 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                             updatedState.updateMedia(webpage.webpageId, media: webpage)
                         }
                 }
+            case let .updateTranscribedAudio(flags, peer, msgId, transcriptionId, text):
+                let isPending = (flags & (1 << 0)) != 0
+                updatedState.updateAudioTranscription(messageId: MessageId(peerId: peer.peerId, namespace: Namespaces.Message.Cloud, id: msgId), id: transcriptionId, isPending: isPending, text: text)
             case let .updateNotifySettings(apiPeer, apiNotificationSettings):
                 switch apiPeer {
                     case let .notifyPeer(peer):
@@ -1372,6 +1379,8 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                 let namespace: SynchronizeInstalledStickerPacksOperationNamespace
                 if (flags & (1 << 0)) != 0 {
                     namespace = .masks
+                } else if (flags & (1 << 1)) != 0 {
+                    namespace = .emoji
                 } else {
                     namespace = .stickers
                 }
@@ -1467,14 +1476,14 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                 updatedState.updateCachedPeerData(peer.peerId, { current in
                     if peer.peerId.namespace == Namespaces.Peer.CloudUser, let previous = current as? CachedUserData {
                         if let botInfo = previous.botInfo {
-                            return previous.withUpdatedBotInfo(BotInfo(description: botInfo.description, photo: botInfo.photo, commands: commands, menuButton: botInfo.menuButton))
+                            return previous.withUpdatedBotInfo(BotInfo(description: botInfo.description, photo: botInfo.photo, video: botInfo.video, commands: commands, menuButton: botInfo.menuButton))
                         }
                     } else if peer.peerId.namespace == Namespaces.Peer.CloudGroup, let previous = current as? CachedGroupData {
                         if let index = previous.botInfos.firstIndex(where: { $0.peerId == botPeerId }) {
                             var updatedBotInfos = previous.botInfos
                             let previousBotInfo = updatedBotInfos[index]
                             updatedBotInfos.remove(at: index)
-                            updatedBotInfos.insert(CachedPeerBotInfo(peerId: botPeerId, botInfo: BotInfo(description: previousBotInfo.botInfo.description, photo: previousBotInfo.botInfo.photo, commands: commands, menuButton: previousBotInfo.botInfo.menuButton)), at: index)
+                            updatedBotInfos.insert(CachedPeerBotInfo(peerId: botPeerId, botInfo: BotInfo(description: previousBotInfo.botInfo.description, photo: previousBotInfo.botInfo.photo, video: previousBotInfo.botInfo.video, commands: commands, menuButton: previousBotInfo.botInfo.menuButton)), at: index)
                             return previous.withUpdatedBotInfos(updatedBotInfos)
                         }
                     } else if peer.peerId.namespace == Namespaces.Peer.CloudChannel, let previous = current as? CachedChannelData {
@@ -1482,7 +1491,7 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                             var updatedBotInfos = previous.botInfos
                             let previousBotInfo = updatedBotInfos[index]
                             updatedBotInfos.remove(at: index)
-                            updatedBotInfos.insert(CachedPeerBotInfo(peerId: botPeerId, botInfo: BotInfo(description: previousBotInfo.botInfo.description, photo: previousBotInfo.botInfo.photo, commands: commands, menuButton: previousBotInfo.botInfo.menuButton)), at: index)
+                            updatedBotInfos.insert(CachedPeerBotInfo(peerId: botPeerId, botInfo: BotInfo(description: previousBotInfo.botInfo.description, photo: previousBotInfo.botInfo.photo, video: previousBotInfo.botInfo.video, commands: commands, menuButton: previousBotInfo.botInfo.menuButton)), at: index)
                             return previous.withUpdatedBotInfos(updatedBotInfos)
                         }
                     }
@@ -1494,7 +1503,7 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                 updatedState.updateCachedPeerData(botPeerId, { current in
                     if let previous = current as? CachedUserData {
                         if let botInfo = previous.botInfo {
-                            return previous.withUpdatedBotInfo(BotInfo(description: botInfo.description, photo: botInfo.photo, commands: botInfo.commands, menuButton: menuButton))
+                            return previous.withUpdatedBotInfo(BotInfo(description: botInfo.description, photo: botInfo.photo, video: botInfo.video, commands: botInfo.commands, menuButton: menuButton))
                         }
                     }
                     return current
@@ -1527,6 +1536,8 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                 updatedState.addUpdateAttachMenuBots()
             case let .updateWebViewResultSent(queryId):
                 updatedState.addDismissWebView(queryId)
+            case .updateConfig:
+                updatedState.reloadConfig()
             default:
                 break
         }
@@ -1545,7 +1556,7 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
             }
         }
         if !channelPeers.isEmpty {
-            let resetSignal = resetChannels(network: network, peers: channelPeers, state: updatedState)
+            let resetSignal = resetChannels(postbox: postbox, network: network, peers: channelPeers, state: updatedState)
             |> map { resultState -> (AccountMutableState, Bool, Int32?) in
                 return (resultState, true, nil)
             }
@@ -1578,7 +1589,7 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
                 }
             }
         }
-        return resolveAssociatedMessages(network: network, state: finalState)
+        return resolveAssociatedMessages(postbox: postbox, network: network, state: finalState)
         |> mapToSignal { resultingState -> Signal<AccountFinalState, NoError> in
             return resolveMissingPeerChatInfos(network: network, state: resultingState)
             |> map { resultingState, resolveError -> AccountFinalState in
@@ -1588,11 +1599,40 @@ private func finalStateWithUpdatesAndServerTime(postbox: Postbox, network: Netwo
     }
 }
 
+func extractEmojiFileIds(message: StoreMessage, fileIds: inout Set<Int64>) {
+    for attribute in message.attributes {
+        if let attribute = attribute as? TextEntitiesMessageAttribute {
+            for entity in attribute.entities {
+                switch entity.type {
+                case let .CustomEmoji(_, fileId):
+                    fileIds.insert(fileId)
+                default:
+                    break
+                }
+            }
+        }
+    }
+}
 
-private func resolveAssociatedMessages(network: Network, state: AccountMutableState) -> Signal<AccountMutableState, NoError> {
+private func messagesFromOperations(state: AccountMutableState) -> [StoreMessage] {
+    var messages: [StoreMessage] = []
+    for operation in state.operations {
+        switch operation {
+        case let .AddMessages(messagesValue, _):
+            messages.append(contentsOf: messagesValue)
+        case let .EditMessage(_, message):
+            messages.append(message)
+        default:
+            break
+        }
+    }
+    return messages
+}
+
+private func resolveAssociatedMessages(postbox: Postbox, network: Network, state: AccountMutableState) -> Signal<AccountMutableState, NoError> {
     let missingMessageIds = state.referencedMessageIds.subtracting(state.storedMessages)
     if missingMessageIds.isEmpty {
-        return .single(state)
+        return resolveUnknownEmojiFiles(postbox: postbox, source: .network(network), messages: messagesFromOperations(state: state), result: state)
     } else {
         var missingPeers = false
         let _ = missingPeers
@@ -1631,7 +1671,8 @@ private func resolveAssociatedMessages(network: Network, state: AccountMutableSt
         
         let fetchMessages = combineLatest(signals)
         
-        return fetchMessages |> map { results in
+        return fetchMessages
+        |> map { results in
             var updatedState = state
             for (messages, chats, users) in results {
                 if !messages.isEmpty {
@@ -1651,6 +1692,9 @@ private func resolveAssociatedMessages(network: Network, state: AccountMutableSt
                 }
             }
             return updatedState
+        }
+        |> mapToSignal { updatedState -> Signal<AccountMutableState, NoError> in
+            return resolveUnknownEmojiFiles(postbox: postbox, source: .network(network), messages: messagesFromOperations(state: updatedState), result: updatedState)
         }
     }
 }
@@ -1814,7 +1858,7 @@ func pollChannelOnce(postbox: Postbox, network: Network, peerId: PeerId, stateMa
         let initialState = AccountMutableState(initialState: AccountInitialState(state: accountState, peerIds: Set(), peerIdsRequiringLocalChatState: Set(), channelStates: channelStates, peerChatInfos: peerChatInfos, locallyGeneratedMessageTimestamps: [:], cloudReadStates: [:], channelsToPollExplicitely: Set()), initialPeers: initialPeers, initialReferencedMessageIds: Set(), initialStoredMessages: Set(), initialReadInboxMaxIds: [:], storedMessagesByPeerIdAndTimestamp: [:])
         return pollChannel(network: network, peer: peer, state: initialState)
         |> mapToSignal { (finalState, _, timeout) -> Signal<Int32, NoError> in
-            return resolveAssociatedMessages(network: network, state: finalState)
+            return resolveAssociatedMessages(postbox: postbox, network: network, state: finalState)
             |> mapToSignal { resultingState -> Signal<AccountFinalState, NoError> in
                 return resolveMissingPeerChatInfos(network: network, state: resultingState)
                 |> map { resultingState, _ -> AccountFinalState in
@@ -1868,7 +1912,7 @@ public func standalonePollChannelOnce(postbox: Postbox, network: Network, peerId
         let initialState = AccountMutableState(initialState: AccountInitialState(state: accountState, peerIds: Set(), peerIdsRequiringLocalChatState: Set(), channelStates: channelStates, peerChatInfos: peerChatInfos, locallyGeneratedMessageTimestamps: [:], cloudReadStates: [:], channelsToPollExplicitely: Set()), initialPeers: initialPeers, initialReferencedMessageIds: Set(), initialStoredMessages: Set(), initialReadInboxMaxIds: [:], storedMessagesByPeerIdAndTimestamp: [:])
         return pollChannel(network: network, peer: peer, state: initialState)
         |> mapToSignal { (finalState, _, timeout) -> Signal<Never, NoError> in
-            return resolveAssociatedMessages(network: network, state: finalState)
+            return resolveAssociatedMessages(postbox: postbox, network: network, state: finalState)
             |> mapToSignal { resultingState -> Signal<AccountFinalState, NoError> in
                 return resolveMissingPeerChatInfos(network: network, state: resultingState)
                 |> map { resultingState, _ -> AccountFinalState in
@@ -1889,7 +1933,7 @@ func keepPollingChannel(postbox: Postbox, network: Network, peerId: PeerId, stat
     |> delay(1.0, queue: .concurrentDefaultQueue())
 }
 
-private func resetChannels(network: Network, peers: [Peer], state: AccountMutableState) -> Signal<AccountMutableState, NoError> {
+private func resetChannels(postbox: Postbox, network: Network, peers: [Peer], state: AccountMutableState) -> Signal<AccountMutableState, NoError> {
     var inputPeers: [Api.InputDialogPeer] = []
     for peer in peers {
         if let inputPeer = apiInputPeer(peer) {
@@ -2041,7 +2085,7 @@ private func resetChannels(network: Network, peers: [Peer], state: AccountMutabl
         
         // TODO: delete messages later than top
         
-        return resolveAssociatedMessages(network: network, state: updatedState)
+        return resolveAssociatedMessages(postbox: postbox, network: network, state: updatedState)
         |> mapToSignal { resultingState -> Signal<AccountMutableState, NoError> in
             return .single(resultingState)
         }
@@ -2319,7 +2363,7 @@ private func optimizedOperations(_ operations: [AccountStateMutationOperation]) 
     var currentAddScheduledMessages: OptimizeAddMessagesState?
     for operation in operations {
         switch operation {
-        case .DeleteMessages, .DeleteMessagesWithGlobalIds, .EditMessage, .UpdateMessagePoll, .UpdateMessageReactions, .UpdateMedia, .MergeApiChats, .MergeApiUsers, .MergePeerPresences, .UpdatePeer, .ReadInbox, .ReadOutbox, .ReadGroupFeedInbox, .ResetReadState, .ResetIncomingReadState, .UpdatePeerChatUnreadMark, .ResetMessageTagSummary, .UpdateNotificationSettings, .UpdateGlobalNotificationSettings, .UpdateSecretChat, .AddSecretMessages, .ReadSecretOutbox, .AddPeerInputActivity, .UpdateCachedPeerData, .UpdatePinnedItemIds, .ReadMessageContents, .UpdateMessageImpressionCount, .UpdateMessageForwardsCount, .UpdateInstalledStickerPacks, .UpdateRecentGifs, .UpdateChatInputState, .UpdateCall, .AddCallSignalingData, .UpdateLangPack, .UpdateMinAvailableMessage, .UpdateIsContact, .UpdatePeerChatInclusion, .UpdatePeersNearby, .UpdateTheme, .SyncChatListFilters, .UpdateChatListFilter, .UpdateChatListFilterOrder, .UpdateReadThread, .UpdateMessagesPinned, .UpdateGroupCallParticipants, .UpdateGroupCall, .UpdateAutoremoveTimeout, .UpdateAttachMenuBots:
+        case .DeleteMessages, .DeleteMessagesWithGlobalIds, .EditMessage, .UpdateMessagePoll, .UpdateMessageReactions, .UpdateMedia, .MergeApiChats, .MergeApiUsers, .MergePeerPresences, .UpdatePeer, .ReadInbox, .ReadOutbox, .ReadGroupFeedInbox, .ResetReadState, .ResetIncomingReadState, .UpdatePeerChatUnreadMark, .ResetMessageTagSummary, .UpdateNotificationSettings, .UpdateGlobalNotificationSettings, .UpdateSecretChat, .AddSecretMessages, .ReadSecretOutbox, .AddPeerInputActivity, .UpdateCachedPeerData, .UpdatePinnedItemIds, .ReadMessageContents, .UpdateMessageImpressionCount, .UpdateMessageForwardsCount, .UpdateInstalledStickerPacks, .UpdateRecentGifs, .UpdateChatInputState, .UpdateCall, .AddCallSignalingData, .UpdateLangPack, .UpdateMinAvailableMessage, .UpdateIsContact, .UpdatePeerChatInclusion, .UpdatePeersNearby, .UpdateTheme, .SyncChatListFilters, .UpdateChatListFilter, .UpdateChatListFilterOrder, .UpdateReadThread, .UpdateMessagesPinned, .UpdateGroupCallParticipants, .UpdateGroupCall, .UpdateAutoremoveTimeout, .UpdateAttachMenuBots, .UpdateAudioTranscription, .UpdateConfig:
                 if let currentAddMessages = currentAddMessages, !currentAddMessages.messages.isEmpty {
                     result.append(.AddMessages(currentAddMessages.messages, currentAddMessages.location))
                 }
@@ -2433,6 +2477,7 @@ func replayFinalState(
     var syncChatListFilters = false
     var deletedMessageIds: [DeletedMessageId] = []
     var syncAttachMenuBots = false
+    var updateConfig = false
     
     var holesFromPreviousStateMessageIds: [MessageId] = []
     var clearHolesFromPreviousStateForChannelMessagesWithPts: [PeerIdAndMessageNamespace: Int32] = [:]
@@ -3340,6 +3385,44 @@ func replayFinalState(
                 })
             case .UpdateAttachMenuBots:
                 syncAttachMenuBots = true
+            case let .UpdateAudioTranscription(messageId, id, isPending, text):
+                transaction.updateMessage(messageId, update: { currentMessage in
+                    var storeForwardInfo: StoreMessageForwardInfo?
+                    if let forwardInfo = currentMessage.forwardInfo {
+                        storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
+                    }
+                    var attributes = currentMessage.attributes
+                    var found = false
+                    loop: for j in 0 ..< attributes.count {
+                        if let attribute = attributes[j] as? AudioTranscriptionMessageAttribute {
+                            attributes[j] = AudioTranscriptionMessageAttribute(id: id, text: text, isPending: isPending, didRate: attribute.didRate, error: nil)
+                            found = true
+                            break loop
+                        }
+                    }
+                    if !found {
+                        attributes.append(AudioTranscriptionMessageAttribute(id: id, text: text, isPending: isPending, didRate: false, error: nil))
+                    }
+                    
+                    return .update(StoreMessage(
+                        id: currentMessage.id,
+                        globallyUniqueId: currentMessage.globallyUniqueId,
+                        groupingKey: currentMessage.groupingKey,
+                        threadId: currentMessage.threadId,
+                        timestamp: currentMessage.timestamp,
+                        flags: StoreMessageFlags(currentMessage.flags),
+                        tags: currentMessage.tags,
+                        globalTags: currentMessage.globalTags,
+                        localTags: currentMessage.localTags,
+                        forwardInfo: storeForwardInfo,
+                        authorId: currentMessage.author?.id,
+                        text: currentMessage.text,
+                        attributes: attributes,
+                        media: currentMessage.media
+                    ))
+                })
+            case .UpdateConfig:
+                updateConfig = true
         }
     }
     
@@ -3411,9 +3494,11 @@ func replayFinalState(
         }) {
             addSynchronizeInstalledStickerPacksOperation(transaction: transaction, namespace: .stickers, content: .sync, noDelay: false)
             addSynchronizeInstalledStickerPacksOperation(transaction: transaction, namespace: .masks, content: .sync, noDelay: false)
+            addSynchronizeInstalledStickerPacksOperation(transaction: transaction, namespace: .emoji, content: .sync, noDelay: false)
         } else {
             var syncStickers = false
             var syncMasks = false
+            var syncEmoji = false
             loop: for operation in stickerPackOperations {
                 switch operation {
                     case let .add(apiSet):
@@ -3450,9 +3535,11 @@ func replayFinalState(
                                 }
                             }
                             switch set {
-                                case let .stickerSet(flags, _, _, _, _, _, _, _, _, _, _):
+                                case let .stickerSet(flags, _, _, _, _, _, _, _, _, _, _, _):
                                     if (flags & (1 << 3)) != 0 {
                                         namespace = Namespaces.ItemCollection.CloudMaskPacks
+                                    } else if (flags & (1 << 7)) != 0 {
+                                        namespace = Namespaces.ItemCollection.CloudEmojiPacks
                                     } else {
                                         namespace = Namespaces.ItemCollection.CloudStickerPacks
                                     }
@@ -3463,6 +3550,8 @@ func replayFinalState(
                             if namespace == Namespaces.ItemCollection.CloudMaskPacks && syncMasks {
                                 continue loop
                             } else if namespace == Namespaces.ItemCollection.CloudStickerPacks && syncStickers {
+                                continue loop
+                            } else if namespace == Namespaces.ItemCollection.CloudEmojiPacks && syncEmoji {
                                 continue loop
                             }
                             
@@ -3484,6 +3573,8 @@ func replayFinalState(
                                 collectionNamespace = Namespaces.ItemCollection.CloudStickerPacks
                             case .masks:
                                 collectionNamespace = Namespaces.ItemCollection.CloudMaskPacks
+                            case .emoji:
+                                collectionNamespace = Namespaces.ItemCollection.CloudEmojiPacks
                         }
                         let currentInfos = transaction.getItemCollectionsInfos(namespace: collectionNamespace).map { $0.1 as! StickerPackCollectionInfo }
                         if Set(currentInfos.map { $0.id.id }) != Set(ids) {
@@ -3492,6 +3583,8 @@ func replayFinalState(
                                     syncStickers = true
                                 case .masks:
                                     syncMasks = true
+                                case .emoji:
+                                    syncEmoji = true
                             }
                         } else {
                             var currentDict: [ItemCollectionId: StickerPackCollectionInfo] = [:]
@@ -3508,6 +3601,7 @@ func replayFinalState(
                     case .sync:
                         syncStickers = true
                         syncMasks = true
+                        syncEmoji = true
                         break loop
                 }
             }
@@ -3516,6 +3610,9 @@ func replayFinalState(
             }
             if syncMasks {
                 addSynchronizeInstalledStickerPacksOperation(transaction: transaction, namespace: .masks, content: .sync, noDelay: false)
+            }
+            if syncEmoji {
+                addSynchronizeInstalledStickerPacksOperation(transaction: transaction, namespace: .emoji, content: .sync, noDelay: false)
             }
         }
     }
@@ -3715,5 +3812,5 @@ func replayFinalState(
         requestChatListFiltersSync(transaction: transaction)
     }
     
-    return AccountReplayedFinalState(state: finalState, addedIncomingMessageIds: addedIncomingMessageIds, addedReactionEvents: addedReactionEvents, wasScheduledMessageIds: wasScheduledMessageIds, addedSecretMessageIds: addedSecretMessageIds, deletedMessageIds: deletedMessageIds, updatedTypingActivities: updatedTypingActivities, updatedWebpages: updatedWebpages, updatedCalls: updatedCalls, addedCallSignalingData: addedCallSignalingData, updatedGroupCallParticipants: updatedGroupCallParticipants, updatedPeersNearby: updatedPeersNearby, isContactUpdates: isContactUpdates, delayNotificatonsUntil: delayNotificatonsUntil, updatedIncomingThreadReadStates: updatedIncomingThreadReadStates, updatedOutgoingThreadReadStates: updatedOutgoingThreadReadStates)
+    return AccountReplayedFinalState(state: finalState, addedIncomingMessageIds: addedIncomingMessageIds, addedReactionEvents: addedReactionEvents, wasScheduledMessageIds: wasScheduledMessageIds, addedSecretMessageIds: addedSecretMessageIds, deletedMessageIds: deletedMessageIds, updatedTypingActivities: updatedTypingActivities, updatedWebpages: updatedWebpages, updatedCalls: updatedCalls, addedCallSignalingData: addedCallSignalingData, updatedGroupCallParticipants: updatedGroupCallParticipants, updatedPeersNearby: updatedPeersNearby, isContactUpdates: isContactUpdates, delayNotificatonsUntil: delayNotificatonsUntil, updatedIncomingThreadReadStates: updatedIncomingThreadReadStates, updatedOutgoingThreadReadStates: updatedOutgoingThreadReadStates, updateConfig: updateConfig)
 }

@@ -357,10 +357,10 @@ open class NavigationController: UINavigationController, ContainableController, 
             self.updateContainers(layout: layout, transition: transition)
         }
     }
-    
+        
     private func updateContainers(layout rawLayout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
         self.isUpdatingContainers = true
-        
+                
         var layout = rawLayout
         
         if self.ignoreInputHeight {
@@ -631,6 +631,7 @@ open class NavigationController: UINavigationController, ContainableController, 
         var topVisibleModalContainerWithStatusBar: NavigationModalContainer?
         var visibleModalCount = 0
         var topModalIsFlat = false
+        var topFlatModalHasProgress = false
         let isLandscape = layout.orientation == .landscape
         var hasVisibleStandaloneModal = false
         var topModalDismissProgress: CGFloat = 0.0
@@ -657,6 +658,17 @@ open class NavigationController: UINavigationController, ContainableController, 
                 effectiveModalTransition = 1.0 - topModalDismissProgress
             } else {
                 effectiveModalTransition = 1.0
+            }
+            
+            if navigationLayout.modal[i].isFlat, let lastController = navigationLayout.modal[i].controllers.last {
+                lastController.modalStyleOverlayTransitionFactorUpdated = { [weak self] transition in
+                    guard let strongSelf = self else {
+                        return
+                    }
+                    strongSelf.updateContainersNonReentrant(transition: transition)
+                }
+                modalStyleOverlayTransitionFactor = max(modalStyleOverlayTransitionFactor, lastController.modalStyleOverlayTransitionFactor)
+                topFlatModalHasProgress = modalStyleOverlayTransitionFactor > 0.0
             }
             
             containerTransition.updateFrame(node: modalContainer, frame: CGRect(origin: CGPoint(), size: layout.size))
@@ -862,9 +874,15 @@ open class NavigationController: UINavigationController, ContainableController, 
                 let visibleRootModalDismissProgress: CGFloat
                 var additionalModalFrameProgress: CGFloat
                 if visibleModalCount == 1 {
-                    effectiveRootModalDismissProgress = (topModalIsFlat || isLandscape) ? 1.0 : topModalDismissProgress
-                    visibleRootModalDismissProgress = effectiveRootModalDismissProgress
-                    additionalModalFrameProgress = 0.0
+                    if topFlatModalHasProgress {
+                        effectiveRootModalDismissProgress = 0.0
+                        visibleRootModalDismissProgress = effectiveRootModalDismissProgress
+                        additionalModalFrameProgress = 1.0 - topModalDismissProgress
+                    } else {
+                        effectiveRootModalDismissProgress = topModalDismissProgress
+                        visibleRootModalDismissProgress = effectiveRootModalDismissProgress
+                        additionalModalFrameProgress = 0.0
+                    }
                 } else if visibleModalCount >= 2 {
                     effectiveRootModalDismissProgress = 0.0
                     visibleRootModalDismissProgress = topModalDismissProgress
@@ -889,7 +907,7 @@ open class NavigationController: UINavigationController, ContainableController, 
                     rootModalFrame.updateDismissal(transition: transition, progress: effectiveRootModalDismissProgress, additionalProgress: additionalModalFrameProgress, completion: {})
                     forceStatusBarAnimation = true
                 } else {
-                    rootModalFrame = NavigationModalFrame(theme: self.theme)
+                    rootModalFrame = NavigationModalFrame()
                     self.rootModalFrame = rootModalFrame
                     if let rootContainer = self.rootContainer {
                         var rootContainerNode: ASDisplayNode
@@ -929,7 +947,7 @@ open class NavigationController: UINavigationController, ContainableController, 
                     }
                     let maxScale: CGFloat
                     let maxOffset: CGFloat
-                    if topModalIsFlat || isLandscape {
+                    if (topModalIsFlat && !topFlatModalHasProgress) || isLandscape {
                         maxScale = 1.0
                         maxOffset = 0.0
                     } else if visibleModalCount <= 1 {
@@ -1220,7 +1238,7 @@ open class NavigationController: UINavigationController, ContainableController, 
             }
         }
     }
-    
+        
     public func pushViewController(_ controller: ViewController) {
         self.pushViewController(controller, completion: {})
     }

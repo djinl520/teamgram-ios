@@ -1096,6 +1096,13 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
                 if canTranslate {
                     actions.append(ContextMenuAction(content: .text(title: strings.Conversation_ContextMenuTranslate, accessibilityLabel: strings.Conversation_ContextMenuTranslate), action: { [weak self] in
                         let controller = TranslateScreen(context: context, text: text, fromLanguage: language)
+                        controller.pushController = { [weak self] c in
+                            (self?.controller?.navigationController as? NavigationController)?._keepModalDismissProgress = true
+                            self?.controller?.push(c)
+                        }
+                        controller.presentController = { [weak self] c in
+                            self?.controller?.present(c, in: .window(.root))
+                        }
                         self?.present(controller, nil)
                     }))
                 }
@@ -1358,7 +1365,7 @@ final class InstantPageControllerNode: ASDisplayNode, UIScrollViewDelegate {
             }, showAll: false)
             
             let peer = TelegramUser(id: PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(0)), accessHash: nil, firstName: "", lastName: nil, username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [])
-            let message = Message(stableId: 0, stableVersion: 0, id: MessageId(peerId: peer.id, namespace: 0, id: 0), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], forwardInfo: nil, author: peer, text: "", attributes: [], media: [map], peers: SimpleDictionary(), associatedMessages: SimpleDictionary(), associatedMessageIds: [])
+            let message = Message(stableId: 0, stableVersion: 0, id: MessageId(peerId: peer.id, namespace: 0, id: 0), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 0, flags: [], tags: [], globalTags: [], localTags: [], forwardInfo: nil, author: peer, text: "", attributes: [], media: [map], peers: SimpleDictionary(), associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:])
             
             let controller = LocationViewController(context: self.context, subject: message, params: controllerParams)
             self.pushController(controller)

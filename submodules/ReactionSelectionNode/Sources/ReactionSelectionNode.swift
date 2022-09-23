@@ -35,9 +35,20 @@ private func generateBubbleShadowImage(shadow: UIColor, diameter: CGFloat, shado
 
 private let font = Font.medium(13.0)
 
-final class ReactionNode: ASDisplayNode {
+protocol ReactionItemNode: ASDisplayNode {
+    var isExtracted: Bool { get }
+    
+    var maskNode: ASDisplayNode? { get }
+    
+    func appear(animated: Bool)
+    func updateLayout(size: CGSize, isExpanded: Bool, largeExpanded: Bool, isPreviewing: Bool, transition: ContainedViewLayoutTransition)
+}
+
+public final class ReactionNode: ASDisplayNode, ReactionItemNode {
     let context: AccountContext
-    let item: ReactionContextItem
+    let item: ReactionItem
+    private let hasAppearAnimation: Bool
+    private let useDirectRendering: Bool
     
     private var animateInAnimationNode: AnimatedStickerNode?
     private let staticAnimationNode: AnimatedStickerNode
@@ -54,20 +65,21 @@ final class ReactionNode: ASDisplayNode {
     var isExtracted: Bool = false
     
     var didSetupStillAnimation: Bool = false
-    
-    private var isLongPressing: Bool = false
-    private var longPressAnimator: DisplayLinkAnimator?
-    
+        
     var expandedAnimationDidBegin: (() -> Void)?
     
-    init(context: AccountContext, theme: PresentationTheme, item: ReactionContextItem) {
+    public init(context: AccountContext, theme: PresentationTheme, item: ReactionItem, hasAppearAnimation: Bool = true, useDirectRendering: Bool = false) {
         self.context = context
         self.item = item
+        self.hasAppearAnimation = hasAppearAnimation
+        self.useDirectRendering = useDirectRendering
         
-        self.staticAnimationNode = AnimatedStickerNode()
-        self.staticAnimationNode.isHidden = true
-        
-        self.animateInAnimationNode = AnimatedStickerNode()
+        self.staticAnimationNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl()
+    
+        if hasAppearAnimation {
+            self.staticAnimationNode.isHidden = true
+            self.animateInAnimationNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl()
+        }
         
         super.init()
         
@@ -99,6 +111,10 @@ final class ReactionNode: ASDisplayNode {
         self.fetchFullAnimationDisposable?.dispose()
     }
     
+    var maskNode: ASDisplayNode? {
+        return nil
+    }
+    
     func appear(animated: Bool) {
         if animated {
             self.animateInAnimationNode?.visibility = true
@@ -107,7 +123,9 @@ final class ReactionNode: ASDisplayNode {
         }
     }
     
-    func updateLayout(size: CGSize, isExpanded: Bool, largeExpanded: Bool, isPreviewing: Bool, transition: ContainedViewLayoutTransition) {
+    public var mainAnimationCompletion: (() -> Void)?
+    
+    public func updateLayout(size: CGSize, isExpanded: Bool, largeExpanded: Bool, isPreviewing: Bool, transition: ContainedViewLayoutTransition) {
         let intrinsicSize = size
         
         let animationSize = self.item.stillAnimation.dimensions?.cgSize ?? CGSize(width: 512.0, height: 512.0)
@@ -124,8 +142,13 @@ final class ReactionNode: ASDisplayNode {
         
         let expandedAnimationFrame = animationFrame
         
-        if isExpanded, self.animationNode == nil {
-            let animationNode = AnimatedStickerNode()
+        if isExpanded && !self.hasAppearAnimation {
+            self.staticAnimationNode.completed = { [weak self] _ in
+                self?.mainAnimationCompletion?()
+            }
+            self.staticAnimationNode.play(firstFrame: false, fromIndex: 0)
+        } else if isExpanded, self.animationNode == nil {
+            let animationNode: AnimatedStickerNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl()
             animationNode.automaticallyLoadFirstFrame = true
             self.animationNode = animationNode
             self.addSubnode(animationNode)
@@ -136,6 +159,9 @@ final class ReactionNode: ASDisplayNode {
                     didReportStarted = true
                     self?.expandedAnimationDidBegin?()
                 }
+            }
+            animationNode.completed = { [weak self] _ in
+                self?.mainAnimationCompletion?()
             }
             
             if largeExpanded {
@@ -211,7 +237,7 @@ final class ReactionNode: ASDisplayNode {
         if self.animationNode == nil {
             if isPreviewing {
                 if self.stillAnimationNode == nil {
-                    let stillAnimationNode = AnimatedStickerNode()
+                    let stillAnimationNode: AnimatedStickerNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl()
                     self.stillAnimationNode = stillAnimationNode
                     self.addSubnode(stillAnimationNode)
                     
@@ -268,7 +294,11 @@ final class ReactionNode: ASDisplayNode {
             if self.animationNode == nil {
                 self.didSetupStillAnimation = true
                 
-                self.staticAnimationNode.setup(source: AnimatedStickerResourceSource(account: self.context.account, resource: self.item.stillAnimation.resource), width: Int(animationDisplaySize.width * 2.0), height: Int(animationDisplaySize.height * 2.0), playbackMode: .still(.start), mode: .direct(cachePathPrefix: self.context.account.postbox.mediaBox.shortLivedResourceCachePathPrefix(self.item.stillAnimation.resource.id)))
+                if !self.hasAppearAnimation {
+                    self.staticAnimationNode.setup(source: AnimatedStickerResourceSource(account: self.context.account, resource: self.item.largeListAnimation.resource), width: Int(expandedAnimationFrame.width * 2.0), height: Int(expandedAnimationFrame.height * 2.0), playbackMode: .still(.start), mode: .direct(cachePathPrefix: self.context.account.postbox.mediaBox.shortLivedResourceCachePathPrefix(self.item.largeListAnimation.resource.id)))
+                } else {
+                    self.staticAnimationNode.setup(source: AnimatedStickerResourceSource(account: self.context.account, resource: self.item.stillAnimation.resource), width: Int(animationDisplaySize.width * 2.0), height: Int(animationDisplaySize.height * 2.0), playbackMode: .still(.start), mode: .direct(cachePathPrefix: self.context.account.postbox.mediaBox.shortLivedResourceCachePathPrefix(self.item.stillAnimation.resource.id)))
+                }
                 self.staticAnimationNode.position = animationFrame.center
                 self.staticAnimationNode.bounds = CGRect(origin: CGPoint(), size: animationFrame.size)
                 self.staticAnimationNode.updateLayout(size: animationFrame.size)
@@ -291,32 +321,120 @@ final class ReactionNode: ASDisplayNode {
             }
         }
     }
+}
+
+final class PremiumReactionsNode: ASDisplayNode, ReactionItemNode {
+    var isExtracted: Bool = false
     
-    func updateIsLongPressing(isLongPressing: Bool) {
-        if self.isLongPressing == isLongPressing {
-            return
-        }
-        self.isLongPressing = isLongPressing
+    private var backgroundView: UIVisualEffectView?
+    private let backgroundMaskNode: ASImageNode
+    private let backgroundOverlayNode: ASImageNode
+    private let imageNode: ASImageNode
+    private var starsNode: PremiumStarsNode?
+    
+    private let maskContainerNode: ASDisplayNode
+    private let maskImageNode: ASImageNode
+    
+    init(theme: PresentationTheme) {
+        self.backgroundMaskNode = ASImageNode()
+        self.backgroundMaskNode.contentMode = .center
+        self.backgroundMaskNode.displaysAsynchronously = false
+        self.backgroundMaskNode.isUserInteractionEnabled = false
+        self.backgroundMaskNode.image = UIImage(bundleImageName: "Premium/ReactionsBackground")
         
-        if isLongPressing {
-            if self.longPressAnimator == nil {
-                let longPressAnimator = DisplayLinkAnimator(duration: 2.0, from: 1.0, to: 2.0, update: { [weak self] value in
-                    guard let strongSelf = self else {
-                        return
-                    }
-                    let transition: ContainedViewLayoutTransition = .immediate
-                    transition.updateSublayerTransformScale(node: strongSelf, scale: value)
-                }, completion: {
-                })
-                self.longPressAnimator = longPressAnimator
-            }
-        } else if let longPressAnimator = self.longPressAnimator {
-            self.longPressAnimator = nil
-            
-            let transition: ContainedViewLayoutTransition = .animated(duration: 0.2, curve: .easeInOut)
-            transition.updateSublayerTransformScale(node: self, scale: 1.0)
-            
-            longPressAnimator.invalidate()
+        self.backgroundOverlayNode = ASImageNode()
+        self.backgroundOverlayNode.alpha = 0.1
+        self.backgroundOverlayNode.contentMode = .center
+        self.backgroundOverlayNode.displaysAsynchronously = false
+        self.backgroundOverlayNode.isUserInteractionEnabled = false
+        self.backgroundOverlayNode.image = generateTintedImage(image: UIImage(bundleImageName: "Premium/ReactionsBackground"), color: theme.overallDarkAppearance ? .white : .black)
+          
+        self.imageNode = ASImageNode()
+        self.imageNode.contentMode = .center
+        self.imageNode.displaysAsynchronously = false
+        self.imageNode.isUserInteractionEnabled = false
+        self.imageNode.image = UIImage(bundleImageName: "Premium/ReactionsForeground")
+        
+        self.maskContainerNode = ASDisplayNode()
+        
+        self.maskImageNode = ASImageNode()
+        if let backgroundImage = UIImage(bundleImageName: "Premium/ReactionsBackground") {
+            self.maskImageNode.image = generateImage(CGSize(width: 40.0 * 4.0, height: 52.0 * 4.0), contextGenerator: { size, context in
+                context.setFillColor(UIColor.black.cgColor)
+                context.fill(CGRect(origin: .zero, size: size))
+                
+                if let cgImage = backgroundImage.cgImage {
+                    let maskFrame = CGRect(origin: .zero, size: size).insetBy(dx: 4.0 + 40.0 * 2.0 - 16.0, dy: 10.0 + 52.0 * 2.0 - 16.0)
+                    context.clip(to: maskFrame, mask: cgImage)
+                }
+                context.setBlendMode(.clear)
+                context.fill(CGRect(origin: .zero, size: size))
+            })
         }
+        self.maskImageNode.frame = CGRect(origin: CGPoint(x: floorToScreenPixels((40.0 - 40.0 * 4.0) / 2.0), y: floorToScreenPixels((52.0 - 52.0 * 4.0) / 2.0)), size: CGSize(width: 40.0 * 4.0, height: 52.0 * 4.0))
+        self.maskContainerNode.addSubnode(self.maskImageNode)
+        
+        super.init()
+        
+        self.addSubnode(self.backgroundOverlayNode)
+        self.addSubnode(self.imageNode)
+    }
+    
+    override func didLoad() {
+        super.didLoad()
+        
+        let blurEffect: UIBlurEffect
+        if #available(iOS 13.0, *) {
+            blurEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        } else {
+            blurEffect = UIBlurEffect(style: .light)
+        }
+        let backgroundView = UIVisualEffectView(effect: blurEffect)
+        backgroundView.mask = self.backgroundMaskNode.view
+        self.view.insertSubview(backgroundView, at: 0)
+        self.backgroundView = backgroundView
+        
+        let starsNode = PremiumStarsNode()
+        starsNode.frame = CGRect(origin: .zero, size: CGSize(width: 32.0, height: 32.0))
+        self.backgroundView?.contentView.addSubview(starsNode.view)
+        self.starsNode = starsNode
+    }
+    
+    func appear(animated: Bool) {
+        if animated {
+            let delay: Double = 0.1
+            let duration: Double = 0.85
+            let damping: CGFloat = 60.0
+            
+            let initialScale: CGFloat = 0.25
+            self.maskImageNode.layer.animateSpring(from: initialScale as NSNumber, to: 1.0 as NSNumber, keyPath: "transform.scale", duration: duration, delay: delay, damping: damping)
+            self.backgroundView?.layer.animateSpring(from: initialScale as NSNumber, to: 1.0 as NSNumber, keyPath: "transform.scale", duration: duration, delay: delay, damping: damping)
+            self.backgroundOverlayNode.layer.animateSpring(from: initialScale as NSNumber, to: 1.0 as NSNumber, keyPath: "transform.scale", duration: duration, delay: delay, damping: damping)
+            self.imageNode.layer.animateSpring(from: initialScale as NSNumber, to: 1.0 as NSNumber, keyPath: "transform.scale", duration: duration, delay: delay, damping: damping)
+            
+            Queue.mainQueue().after(0.25, {
+                let shimmerNode = ASImageNode()
+                shimmerNode.displaysAsynchronously = false
+                shimmerNode.image = generateGradientImage(size: CGSize(width: 32.0, height: 32.0), colors: [UIColor(rgb: 0xffffff, alpha: 0.0), UIColor(rgb: 0xffffff, alpha: 0.24), UIColor(rgb: 0xffffff, alpha: 0.0)], locations: [0.0, 0.5, 1.0], direction: .horizontal)
+                shimmerNode.frame = CGRect(origin: .zero, size: CGSize(width: 32.0, height: 32.0))
+                self.backgroundView?.contentView.addSubview(shimmerNode.view)
+                
+                shimmerNode.layer.animatePosition(from: CGPoint(x: -60.0, y: 0.0), to: CGPoint(x: 60.0, y: 0.0), duration: 0.75, removeOnCompletion: false, additive: true, completion: { [weak shimmerNode] _ in
+                    shimmerNode?.view.removeFromSuperview()
+                })
+            })
+        }
+    }
+    
+    func updateLayout(size: CGSize, isExpanded: Bool, largeExpanded: Bool, isPreviewing: Bool, transition: ContainedViewLayoutTransition) {
+        let bounds = CGRect(origin: CGPoint(), size: size)
+        self.backgroundView?.frame = bounds
+        self.backgroundMaskNode.frame = bounds
+        self.backgroundOverlayNode.frame = bounds
+        self.imageNode.frame = bounds
+    }
+    
+    var maskNode: ASDisplayNode? {
+        return self.maskContainerNode
     }
 }

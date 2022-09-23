@@ -47,7 +47,7 @@ public final class HashtagSearchController: TelegramBaseController {
             let chatListPresentationData = ChatListPresentationData(theme: presentationData.theme, fontSize: presentationData.listsFontSize, strings: presentationData.strings, dateTimeFormat: presentationData.dateTimeFormat, nameSortOrder: presentationData.nameSortOrder, nameDisplayOrder: presentationData.nameDisplayOrder, disableAnimations: true)
             return result.messages.map({ .message(EngineMessage($0), EngineRenderedPeer(message: EngineMessage($0)), result.readStates[$0.id.peerId].flatMap(EnginePeerReadCounters.init), chatListPresentationData, result.totalCount, nil, false, .index($0.index), nil, .generic, false) })
         }
-        let interaction = ChatListNodeInteraction(activateSearch: {
+        let interaction = ChatListNodeInteraction(context: context, activateSearch: {
         }, peerSelected: { _, _, _ in
         }, disabledPeerSelected: { _ in
         }, togglePeerSelected: { _ in
@@ -55,7 +55,7 @@ public final class HashtagSearchController: TelegramBaseController {
         }, additionalCategorySelected: { _ in
         }, messageSelected: { [weak self] peer, message, _ in
             if let strongSelf = self {
-                strongSelf.openMessageFromSearchDisposable.set((storedMessageFromSearchPeer(account: strongSelf.context.account, peer: peer._asPeer()) |> deliverOnMainQueue).start(next: { actualPeerId in
+                strongSelf.openMessageFromSearchDisposable.set((strongSelf.context.engine.peers.ensurePeerIsLocallyAvailable(peer: peer) |> deliverOnMainQueue).start(next: { actualPeerId in
                     if let strongSelf = self, let navigationController = strongSelf.navigationController as? NavigationController {
                         strongSelf.context.sharedContext.navigateToChatController(NavigateToChatControllerParams(navigationController: navigationController, context: strongSelf.context, chatLocation: .peer(id: actualPeerId), subject: message.id.peerId == actualPeerId ? .message(id: .id(message.id), highlight: true, timecode: nil) : nil, keepStack: .always))
                     }
@@ -72,7 +72,7 @@ public final class HashtagSearchController: TelegramBaseController {
         }, togglePeerMarkedUnread: { _, _ in
         }, toggleArchivedFolderHiddenByDefault: {
         }, hidePsa: { _ in
-        }, activateChatPreview: { _, _, gesture in
+        }, activateChatPreview: { _, _, gesture, _ in
             gesture?.cancel()
         }, present: { _ in
         })

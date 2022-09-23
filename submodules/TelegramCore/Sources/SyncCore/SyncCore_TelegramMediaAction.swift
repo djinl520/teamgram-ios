@@ -39,7 +39,7 @@ public enum TelegramMediaActionType: PostboxCoding, Equatable {
     case messageAutoremoveTimeoutUpdated(Int32)
     case gameScore(gameId: Int64, score: Int32)
     case phoneCall(callId: Int64, discardReason: PhoneCallDiscardReason?, duration: Int32?, isVideo: Bool)
-    case paymentSent(currency: String, totalAmount: Int64)
+    case paymentSent(currency: String, totalAmount: Int64, invoiceSlug: String?, isRecurringInit: Bool, isRecurringUsed: Bool)
     case customText(text: String, entities: [MessageTextEntity])
     case botDomainAccessGranted(domain: String)
     case botSentSecureValues(types: [SentSecureValueType])
@@ -51,6 +51,7 @@ public enum TelegramMediaActionType: PostboxCoding, Equatable {
     case setChatTheme(emoji: String)
     case joinedByRequest
     case webViewData(String)
+    case giftPremium(currency: String, amount: Int64, months: Int32)
     
     public init(decoder: PostboxDecoder) {
         let rawValue: Int32 = decoder.decodeInt32ForKey("_rawValue", orElse: 0)
@@ -88,7 +89,7 @@ public enum TelegramMediaActionType: PostboxCoding, Equatable {
                 }
                 self = .phoneCall(callId: decoder.decodeInt64ForKey("i", orElse: 0), discardReason: discardReason, duration: decoder.decodeInt32ForKey("d", orElse: 0), isVideo: decoder.decodeInt32ForKey("vc", orElse: 0) != 0)
             case 15:
-                self = .paymentSent(currency: decoder.decodeStringForKey("currency", orElse: ""), totalAmount: decoder.decodeInt64ForKey("ta", orElse: 0))
+                self = .paymentSent(currency: decoder.decodeStringForKey("currency", orElse: ""), totalAmount: decoder.decodeInt64ForKey("ta", orElse: 0), invoiceSlug: decoder.decodeOptionalStringForKey("invoiceSlug"), isRecurringInit: decoder.decodeBoolForKey("isRecurringInit", orElse: false), isRecurringUsed: decoder.decodeBoolForKey("isRecurringUsed", orElse: false))
             case 16:
                 self = .customText(text: decoder.decodeStringForKey("text", orElse: ""), entities: decoder.decodeObjectArrayWithDecoderForKey("ent"))
             case 17:
@@ -119,6 +120,8 @@ public enum TelegramMediaActionType: PostboxCoding, Equatable {
                 self = .joinedByRequest
             case 26:
                 self = .webViewData(decoder.decodeStringForKey("t", orElse: ""))
+            case 27:
+                self = .giftPremium(currency: decoder.decodeStringForKey("currency", orElse: ""), amount: decoder.decodeInt64ForKey("amount", orElse: 0), months: decoder.decodeInt32ForKey("months", orElse: 0))
             default:
                 self = .unknown
         }
@@ -172,10 +175,17 @@ public enum TelegramMediaActionType: PostboxCoding, Equatable {
                 encoder.encodeInt32(13, forKey: "_rawValue")
                 encoder.encodeInt64(gameId, forKey: "i")
                 encoder.encodeInt32(score, forKey: "s")
-            case let .paymentSent(currency, totalAmount):
+            case let .paymentSent(currency, totalAmount, invoiceSlug, isRecurringInit, isRecurringUsed):
                 encoder.encodeInt32(15, forKey: "_rawValue")
                 encoder.encodeString(currency, forKey: "currency")
                 encoder.encodeInt64(totalAmount, forKey: "ta")
+                if let invoiceSlug = invoiceSlug {
+                    encoder.encodeString(invoiceSlug, forKey: "invoiceSlug")
+                } else {
+                    encoder.encodeNil(forKey: "invoiceSlug")
+                }
+                encoder.encodeBool(isRecurringInit, forKey: "isRecurringInit")
+                encoder.encodeBool(isRecurringUsed, forKey: "isRecurringUsed")
             case let .phoneCall(callId, discardReason, duration, isVideo):
                 encoder.encodeInt32(14, forKey: "_rawValue")
                 encoder.encodeInt64(callId, forKey: "i")
@@ -236,6 +246,11 @@ public enum TelegramMediaActionType: PostboxCoding, Equatable {
             case let .webViewData(text):
                 encoder.encodeInt32(26, forKey: "_rawValue")
                 encoder.encodeString(text, forKey: "t")
+            case let .giftPremium(currency, amount, months):
+                encoder.encodeInt32(27, forKey: "_rawValue")
+                encoder.encodeString(currency, forKey: "currency")
+                encoder.encodeInt64(amount, forKey: "amount")
+                encoder.encodeInt32(months, forKey: "months")
         }
     }
     

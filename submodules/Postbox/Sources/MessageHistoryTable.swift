@@ -548,6 +548,18 @@ final class MessageHistoryTable: Table {
         }
     }
     
+    func storeMediaIfNotPresent(media: Media) {
+        guard let id = media.id else {
+            return
+        }
+        if let _ = self.messageMediaTable.get(id, embedded: { index, id in
+            return self.embeddedMediaForIndex(index, id: id)
+        }) {
+        } else {
+            let _ = self.messageMediaTable.set(media, index: nil, messageHistoryTable: self)
+        }
+    }
+    
     func getMedia(_ id: MediaId) -> Media? {
         return self.messageMediaTable.get(id, embedded: { index, id in
             return self.embeddedMediaForIndex(index, id: id)
@@ -1474,6 +1486,24 @@ final class MessageHistoryTable: Table {
                 }
             }
             
+            var previousAttributes: [MessageAttribute] = []
+            let attributesData = previousMessage.attributesData.sharedBufferNoCopy()
+            if attributesData.length > 4 {
+                var attributeCount: Int32 = 0
+                attributesData.read(&attributeCount, offset: 0, length: 4)
+                for _ in 0 ..< attributeCount {
+                    var attributeLength: Int32 = 0
+                    attributesData.read(&attributeLength, offset: 0, length: 4)
+                    if let attribute = PostboxDecoder(buffer: MemoryBuffer(memory: attributesData.memory + attributesData.offset, capacity: Int(attributeLength), length: Int(attributeLength), freeWhenDone: false)).decodeRootObject() as? MessageAttribute {
+                        previousAttributes.append(attribute)
+                    }
+                    attributesData.skip(Int(attributeLength))
+                }
+            }
+            
+            var updatedAttributes = message.attributes
+            self.seedConfiguration.mergeMessageAttributes(previousAttributes, &updatedAttributes)
+            
             self.valueBox.remove(self.table, key: self.key(index), secure: true)
             
             let updatedIndex = message.index
@@ -1534,14 +1564,14 @@ final class MessageHistoryTable: Table {
                 for tag in previousTimestampBasedAttibutes.keys {
                     self.timeBasedAttributesTable.remove(tag: tag, id: previousMessage.id, operations: &timestampBasedMessageAttributesOperations)
                 }
-                for attribute in message.attributes {
+                for attribute in updatedAttributes {
                     if let (tag, timestamp) = attribute.automaticTimestampBasedAttribute {
                         self.timeBasedAttributesTable.set(tag: tag, id: message.id, timestamp: timestamp, operations: &timestampBasedMessageAttributesOperations)
                     }
                 }
             } else {
                 var updatedTimestampBasedAttibuteTags: [UInt16] = []
-                for attribute in message.attributes {
+                for attribute in updatedAttributes {
                     if let (tag, timestamp) = attribute.automaticTimestampBasedAttribute {
                         updatedTimestampBasedAttibuteTags.append(tag)
                         if previousTimestampBasedAttibutes[tag] != timestamp {
@@ -1778,9 +1808,9 @@ final class MessageHistoryTable: Table {
             
             let attributesBuffer = WriteBuffer()
             
-            var attributeCount: Int32 = Int32(message.attributes.count)
+            var attributeCount: Int32 = Int32(updatedAttributes.count)
             attributesBuffer.write(&attributeCount, offset: 0, length: 4)
-            for attribute in message.attributes {
+            for attribute in updatedAttributes {
                 sharedEncoder.reset()
                 sharedEncoder.encodeRootObject(attribute)
                 let attributeBuffer = sharedEncoder.memoryBuffer()
@@ -2498,10 +2528,21 @@ final class MessageHistoryTable: Table {
         
         var associatedMessageIds: [MessageId] = []
         var associatedMessages = SimpleDictionary<MessageId, Message>()
+        var associatedMedia: [MediaId: Media] = [:]
         for attribute in parsedAttributes {
             for peerId in attribute.associatedPeerIds {
                 if let peer = peerTable.get(peerId) {
                     peers[peer.id] = peer
+                }
+            }
+            for mediaId in attribute.associatedMediaIds {
+                if associatedMedia[mediaId] == nil {
+                    if mediaId.id == 5364107552168613887 {
+                        assert(true)
+                    }
+                    if let media = self.getMedia(mediaId) {
+                        associatedMedia[mediaId] = media
+                    }
                 }
             }
             associatedMessageIds.append(contentsOf: attribute.associatedMessageIds)
@@ -2516,7 +2557,7 @@ final class MessageHistoryTable: Table {
             }
         }
         
-        return Message(stableId: message.stableId, stableVersion: message.stableVersion, id: message.id, globallyUniqueId: message.globallyUniqueId, groupingKey: message.groupingKey, groupInfo: message.groupInfo, threadId: message.threadId, timestamp: message.timestamp, flags: message.flags, tags: message.tags, globalTags: message.globalTags, localTags: message.localTags, forwardInfo: forwardInfo, author: author, text: message.text, attributes: parsedAttributes, media: parsedMedia, peers: peers, associatedMessages: associatedMessages, associatedMessageIds: associatedMessageIds)
+        return Message(stableId: message.stableId, stableVersion: message.stableVersion, id: message.id, globallyUniqueId: message.globallyUniqueId, groupingKey: message.groupingKey, groupInfo: message.groupInfo, threadId: message.threadId, timestamp: message.timestamp, flags: message.flags, tags: message.tags, globalTags: message.globalTags, localTags: message.localTags, forwardInfo: forwardInfo, author: author, text: message.text, attributes: parsedAttributes, media: parsedMedia, peers: peers, associatedMessages: associatedMessages, associatedMessageIds: associatedMessageIds, associatedMedia: associatedMedia)
     }
     
     func renderMessagePeers(_ message: Message, peerTable: PeerTable) -> Message {

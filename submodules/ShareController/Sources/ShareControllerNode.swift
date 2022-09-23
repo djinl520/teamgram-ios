@@ -11,7 +11,7 @@ import TelegramIntents
 import ContextUI
 
 enum ShareState {
-    case preparing
+    case preparing(Bool)
     case progress(Float)
     case done
 }
@@ -59,7 +59,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
     
     var dismiss: ((Bool) -> Void)?
     var cancel: (() -> Void)?
-    var share: ((String, [PeerId], Bool, Bool) -> Signal<ShareState, NoError>)?
+    var share: ((String, [PeerId], Bool, Bool) -> Signal<ShareState, ShareControllerError>)?
     var shareExternal: ((Bool) -> Signal<ShareExternalState, NoError>)?
     var switchToAnotherAccount: (() -> Void)?
     var debugAction: (() -> Void)?
@@ -457,7 +457,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
                     
                     if contentNode is ShareSearchContainerNode {
                         self.setActionNodesHidden(true, inputField: true, actions: true)
-                    } else if !(contentNode is ShareLoadingContainerNode) {
+                    } else if !(contentNode is ShareLoadingContainer) {
                         self.setActionNodesHidden(false, inputField: !self.controllerInteraction!.selectedPeers.isEmpty || self.presetText != nil, actions: true)
                     }
                 } else {
@@ -614,7 +614,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
     func send(peerId: PeerId? = nil, showNames: Bool = true, silently: Bool = false) {
         if !self.inputFieldNode.text.isEmpty {
             for peer in self.controllerInteraction!.selectedPeers {
-                if let channel = peer.peer as? TelegramChannel, channel.isRestrictedBySlowmode {
+                if case let .channel(channel) = peer.peer, channel.isRestrictedBySlowmode {
                     self.presentError(channel.title, self.presentationData.strings.Share_MultipleMessagesDisabled)
                     return
                 }
@@ -649,7 +649,24 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
             let timestamp = CACurrentMediaTime()
             let doneImpl: (Bool) -> Void = { [weak self] shouldDelay in
                 let minDelay: Double = shouldDelay ? 0.9 : 0.6
-                let delay = max(minDelay, (timestamp + minDelay) - CACurrentMediaTime())
+                let delay: Double
+                let hapticDelay: Double
+                
+                if let strongSelf = self, let contentNode = strongSelf.contentNode as? ShareProlongedLoadingContainerNode {
+                    delay = contentNode.completionDuration
+                    hapticDelay = shouldDelay ? delay - 1.5 : delay
+                } else {
+                    delay = max(minDelay, (timestamp + minDelay) - CACurrentMediaTime())
+                    hapticDelay = delay
+                }
+                         
+                Queue.mainQueue().after(hapticDelay, {
+                    if self?.hapticFeedback == nil {
+                        self?.hapticFeedback = HapticFeedback()
+                    }
+                    self?.hapticFeedback?.success()
+                })
+                
                 Queue.mainQueue().after(delay, {
                     self?.animateOut(shared: true, completion: {
                         self?.dismiss?(true)
@@ -657,9 +674,8 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
                     })
                 })
             }
-            if self.fromForeignApp {
-                self.transitionToContentNode(ShareLoadingContainerNode(theme: self.presentationData.theme, forceNativeAppearance: true), fastOut: true)
-            } else {
+            
+            if !self.fromForeignApp {
                 self.animateOut(shared: true, completion: {
                 })
                 self.completed?(peerIds)
@@ -671,6 +687,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
                     self.hapticFeedback?.success()
                 }
             }
+            var transitioned = false
             let fromForeignApp = self.fromForeignApp
             self.shareDisposable.set((signal
             |> deliverOnMainQueue).start(next: { [weak self] status in
@@ -678,12 +695,21 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
                     return
                 }
                 
+                if fromForeignApp, case let .preparing(long) = status, !transitioned {
+                    transitioned = true
+                    if long {
+                        strongSelf.transitionToContentNode(ShareProlongedLoadingContainerNode(theme: strongSelf.presentationData.theme, strings: strongSelf.presentationData.strings, forceNativeAppearance: true, account: strongSelf.context?.account, sharedContext: strongSelf.sharedContext), fastOut: true)
+                    } else {
+                        strongSelf.transitionToContentNode(ShareLoadingContainerNode(theme: strongSelf.presentationData.theme, forceNativeAppearance: true), fastOut: true)
+                    }
+                }
+                
                 if case .done = status, !fromForeignApp {
                     strongSelf.dismiss?(true)
                     return
                 }
-                
-                guard let contentNode = strongSelf.contentNode as? ShareLoadingContainerNode else {
+                                
+                guard let contentNode = strongSelf.contentNode as? ShareLoadingContainer else {
                     return
                 }
                 
@@ -696,11 +722,6 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
                         contentNode.state = .done
                         if fromForeignApp {
                             if !wasDone {
-                                if strongSelf.hapticFeedback == nil {
-                                    strongSelf.hapticFeedback = HapticFeedback()
-                                }
-                                strongSelf.hapticFeedback?.success()
-                                
                                 wasDone = true
                                 doneImpl(true)
                             }
@@ -784,7 +805,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
         }
     }
     
-    func updatePeers(context: AccountContext, switchableAccounts: [AccountWithInfo], peers: [(RenderedPeer, PeerPresence?)], accountPeer: Peer, defaultAction: ShareControllerAction?) {
+    func updatePeers(context: AccountContext, switchableAccounts: [AccountWithInfo], peers: [(EngineRenderedPeer, EnginePeer.Presence?)], accountPeer: EnginePeer, defaultAction: ShareControllerAction?) {
         self.context = context
         
         if let peersContentNode = self.peersContentNode, peersContentNode.accountPeer.id == accountPeer.id {
@@ -794,9 +815,8 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
         
         if let peerId = self.immediatePeerId {
             self.immediatePeerId = nil
-            let _ = (context.account.postbox.transaction { transaction -> RenderedPeer? in
-                return transaction.getPeer(peerId).flatMap(RenderedPeer.init(peer:))
-            } |> deliverOnMainQueue).start(next: { [weak self] peer in
+            let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.RenderedPeer(id: peerId))
+            |> deliverOnMainQueue).start(next: { [weak self] peer in
                 if let strongSelf = self, let peer = peer {
                     strongSelf.controllerInteraction?.togglePeer(peer, peer.peerId != context.account.peerId)
                 }
@@ -988,7 +1008,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
         transition.updateAlpha(node: self.actionSeparatorNode, alpha: 0.0)
         transition.updateAlpha(node: self.actionsBackgroundNode, alpha: 0.0)
         
-        self.transitionToContentNode(ShareLoadingContainerNode(theme: self.presentationData.theme, forceNativeAppearance: true), fastOut: true)
+        self.transitionToContentNode(ShareProlongedLoadingContainerNode(theme: self.presentationData.theme, strings: self.presentationData.strings, forceNativeAppearance: true, account: self.context?.account, sharedContext: self.sharedContext), fastOut: true)
         let timestamp = CACurrentMediaTime()
         self.shareDisposable.set(signal.start(completed: { [weak self] in
             let minDelay = 0.6
@@ -1003,7 +1023,7 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
         }))
     }
     
-    func transitionToProgressWithValue(signal: Signal<Float?, NoError>, dismissImmediately: Bool = false) {
+    func transitionToProgressWithValue(signal: Signal<Float?, NoError>, dismissImmediately: Bool = false, completion: @escaping () -> Void) {
         self.inputFieldNode.deactivateInput()
         
         if dismissImmediately {
@@ -1016,6 +1036,8 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
                 if let strongSelf = self {
                     strongSelf.dismiss?(true)
                 }
+                
+                completion()
             }))
         } else {
             let transition = ContainedViewLayoutTransition.animated(duration: 0.12, curve: .easeInOut)
@@ -1041,14 +1063,16 @@ final class ShareControllerNode: ViewControllerTracingNode, UIScrollViewDelegate
             }
             self.shareDisposable.set((signal
             |> deliverOnMainQueue).start(next: { [weak self] status in
-                guard let strongSelf = self, let contentNode = strongSelf.contentNode as? ShareLoadingContainerNode else {
+                guard let strongSelf = self, let contentNode = strongSelf.contentNode as? ShareLoadingContainer else {
                     return
                 }
                 if let status = status {
                     contentNode.state = .progress(status)
                 }
             }, completed: { [weak self] in
-                guard let strongSelf = self, let contentNode = strongSelf.contentNode as? ShareLoadingContainerNode else {
+                completion()
+                
+                guard let strongSelf = self, let contentNode = strongSelf.contentNode as? ShareLoadingContainer else {
                     return
                 }
                 contentNode.state = .done

@@ -98,6 +98,16 @@ public func chatMessageGalleryControllerData(context: AccountContext, chatLocati
     var galleryMedia: Media?
     var otherMedia: Media?
     var instantPageMedia: (TelegramMediaWebpage, [InstantPageGalleryEntry])?
+    if message.media.isEmpty, let entities = message.textEntitiesAttribute?.entities, entities.count == 1, let firstEntity = entities.first, case let .CustomEmoji(_, fileId) = firstEntity.type, let file = message.associatedMedia[MediaId(namespace: Namespaces.Media.CloudFile, id: fileId)] as? TelegramMediaFile {
+        for attribute in file.attributes {
+            if case let .CustomEmoji(_, _, reference) = attribute {
+                if let reference = reference {
+                    return .stickerPack(reference)
+                }
+                break
+            }
+        }
+    }
     for media in message.media {
         if let action = media as? TelegramMediaAction {
             switch action.action {
@@ -205,9 +215,9 @@ public func chatMessageGalleryControllerData(context: AccountContext, chatLocati
                     } else if ext == "wav" || ext == "opus" {
                         return .audio(file)
                     }
-                    if ext == "mkv" {
+                    /*if ext == "mkv" {
                         return .document(file, true)
-                    }
+                    }*/
                 }
                 
                 if internalDocumentItemSupportsMimeType(file.mimeType, fileName: file.fileName ?? "file") {
@@ -230,7 +240,7 @@ public func chatMessageGalleryControllerData(context: AccountContext, chatLocati
                 if let timecode = timecode {
                     startState = .single((timecode: timecode, rate: 1.0))
                 } else {
-                    startState = mediaPlaybackStoredState(postbox: context.account.postbox, messageId: message.id)
+                    startState = mediaPlaybackStoredState(engine: context.engine, messageId: message.id)
                     |> map { state in
                         return (state?.timestamp, state?.playbackRate.doubleValue ?? 1.0)
                     }

@@ -439,13 +439,16 @@ public func customizeDefaultDarkTintedPresentationTheme(theme: PresentationTheme
         inputMediaPanel: chat.inputMediaPanel.withUpdated(
             panelSeparatorColor: mainBackgroundColor,
             panelIconColor: mainSecondaryTextColor?.withAlphaComponent(0.5),
-            panelHighlightedIconBackgroundColor: inputBackgroundColor,
+            panelHighlightedIconBackgroundColor: mainSecondaryTextColor?.withAlphaComponent(0.5).withMultipliedAlpha(0.25),
+            panelHighlightedIconColor: mainSecondaryTextColor?.withAlphaComponent(0.5).mixedWith(chat.inputPanel.primaryTextColor, alpha: 0.35),
+            panelContentVibrantOverlayColor: mainSecondaryTextColor?.withAlphaComponent(0.5),
             stickersBackgroundColor: additionalBackgroundColor,
             stickersSectionTextColor: mainSecondaryTextColor?.withAlphaComponent(0.5),
             stickersSearchBackgroundColor: accentColor?.withMultiplied(hue: 1.009, saturation: 0.621, brightness: 0.15),
             stickersSearchPlaceholderColor: accentColor?.withMultiplied(hue: 0.99, saturation: 0.243, brightness: 0.59),
             stickersSearchControlColor: accentColor?.withMultiplied(hue: 0.99, saturation: 0.243, brightness: 0.59),
-            gifsBackgroundColor: additionalBackgroundColor
+            gifsBackgroundColor: additionalBackgroundColor,
+            backgroundColor: additionalBackgroundColor?.withMultipliedAlpha(0.75)
         ),
         inputButtonPanel: chat.inputButtonPanel.withUpdated(
             panelSeparatorColor: mainBackgroundColor,
@@ -604,7 +607,9 @@ public func makeDefaultDarkTintedPresentationTheme(extendingThemeReference: Pres
 
     let list = PresentationThemeList(
         blocksBackgroundColor: additionalBackgroundColor,
+        modalBlocksBackgroundColor: additionalBackgroundColor,
         plainBackgroundColor: additionalBackgroundColor,
+        modalPlainBackgroundColor: mainBackgroundColor,
         itemPrimaryTextColor: UIColor(rgb: 0xffffff),
         itemSecondaryTextColor: mainSecondaryTextColor.withAlphaComponent(0.5),
         itemDisabledTextColor: mainSecondaryTextColor.withAlphaComponent(0.5),
@@ -613,6 +618,7 @@ public func makeDefaultDarkTintedPresentationTheme(extendingThemeReference: Pres
         itemDestructiveColor: UIColor(rgb: 0xff6767),
         itemPlaceholderTextColor: mainSecondaryTextColor.withAlphaComponent(0.5),
         itemBlocksBackgroundColor: mainBackgroundColor,
+        itemModalBlocksBackgroundColor: mainBackgroundColor,
         itemHighlightedBackgroundColor: mainSelectionColor,
         itemBlocksSeparatorColor: mainSeparatorColor,
         itemPlainSeparatorColor: mainSeparatorColor,
@@ -833,14 +839,17 @@ public func makeDefaultDarkTintedPresentationTheme(extendingThemeReference: Pres
     let inputMediaPanel = PresentationThemeInputMediaPanel(
         panelSeparatorColor: mainBackgroundColor,
         panelIconColor: mainSecondaryTextColor.withAlphaComponent(0.5),
-        panelHighlightedIconBackgroundColor: inputBackgroundColor,
+        panelHighlightedIconBackgroundColor: mainSecondaryTextColor.withAlphaComponent(0.5).withMultipliedAlpha(0.25),
+        panelHighlightedIconColor: mainSecondaryTextColor.withAlphaComponent(0.5).mixedWith(inputPanel.primaryTextColor, alpha: 0.35),
+        panelContentVibrantOverlayColor: mainSecondaryTextColor.withAlphaComponent(0.5),
         stickersBackgroundColor: additionalBackgroundColor,
         stickersSectionTextColor: mainSecondaryTextColor.withAlphaComponent(0.5),
         stickersSearchBackgroundColor: accentColor.withMultiplied(hue: 1.009, saturation: 0.621, brightness: 0.15),
         stickersSearchPlaceholderColor: accentColor.withMultiplied(hue: 0.99, saturation: 0.243, brightness: 0.59),
         stickersSearchPrimaryColor: .white,
         stickersSearchControlColor: accentColor.withMultiplied(hue: 0.99, saturation: 0.243, brightness: 0.59),
-        gifsBackgroundColor: additionalBackgroundColor
+        gifsBackgroundColor: additionalBackgroundColor,
+        backgroundColor: additionalBackgroundColor.withMultipliedAlpha(0.75)
     )
 
     let inputButtonPanel = PresentationThemeInputButtonPanel(

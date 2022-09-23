@@ -134,6 +134,14 @@ class ReactionChatPreviewItemNode: ListViewItemNode {
         }
     }
     
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if self.bounds.contains(point) {
+            return self.view
+        } else {
+            return nil
+        }
+    }
+    
     private func beginReactionAnimation() {
         if let item = self.item, let updatedReaction = item.reaction, let availableReactions = item.availableReactions, let messageNode = self.messageNode as? ChatMessageItemNodeProtocol {
             if let targetView = messageNode.targetReactionView(value: updatedReaction) {
@@ -161,8 +169,8 @@ class ReactionChatPreviewItemNode: ListViewItemNode {
                             supernode.addSubnode(standaloneReactionAnimation)
                             standaloneReactionAnimation.frame = supernode.bounds
                             standaloneReactionAnimation.animateReactionSelection(
-                                context: item.context, theme: item.theme, reaction: ReactionContextItem(
-                                    reaction: ReactionContextItem.Reaction(rawValue: reaction.value),
+                                context: item.context, theme: item.theme, reaction: ReactionItem(
+                                    reaction: ReactionItem.Reaction(rawValue: reaction.value),
                                     appearAnimation: reaction.appearAnimation,
                                     stillAnimation: reaction.selectAnimation,
                                     listAnimation: centerAnimation,
@@ -219,7 +227,7 @@ class ReactionChatPreviewItemNode: ListViewItemNode {
                 attributes.append(ReactionsMessageAttribute(canViewList: false, reactions: [MessageReaction(value: reaction, count: 1, isSelected: true)], recentPeers: []))
             }
             
-            let messageItem = item.context.sharedContext.makeChatMessagePreviewItem(context: item.context, messages: [Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: chatPeerId, namespace: 0, id: 1), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 66000, flags: [.Incoming], tags: [], globalTags: [], localTags: [], forwardInfo: nil, author: peers[userPeerId], text: messageText, attributes: attributes, media: [], peers: peers, associatedMessages: messages, associatedMessageIds: [])], theme: item.theme, strings: item.strings, wallpaper: item.wallpaper, fontSize: item.fontSize, chatBubbleCorners: item.chatBubbleCorners, dateTimeFormat: item.dateTimeFormat, nameOrder: item.nameDisplayOrder, forcedResourceStatus: nil, tapMessage: nil, clickThroughMessage: nil, backgroundNode: currentBackgroundNode, availableReactions: item.availableReactions, isCentered: true)
+            let messageItem = item.context.sharedContext.makeChatMessagePreviewItem(context: item.context, messages: [Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: chatPeerId, namespace: 0, id: 1), globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 66000, flags: [.Incoming], tags: [], globalTags: [], localTags: [], forwardInfo: nil, author: peers[userPeerId], text: messageText, attributes: attributes, media: [], peers: peers, associatedMessages: messages, associatedMessageIds: [], associatedMedia: [:])], theme: item.theme, strings: item.strings, wallpaper: item.wallpaper, fontSize: item.fontSize, chatBubbleCorners: item.chatBubbleCorners, dateTimeFormat: item.dateTimeFormat, nameOrder: item.nameDisplayOrder, forcedResourceStatus: nil, tapMessage: nil, clickThroughMessage: nil, backgroundNode: currentBackgroundNode, availableReactions: item.availableReactions, isCentered: true)
             
             var node: ListViewItemNode?
             if let current = currentNode {

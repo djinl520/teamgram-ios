@@ -62,6 +62,8 @@ extension StickerPackReference {
                 self = .dice(emoticon)
             case .inputStickerSetAnimatedEmojiAnimations:
                 self = .animatedEmojiAnimations
+            case .inputStickerSetPremiumGifts:
+                self = .premiumGifts
         }
     }
 }
@@ -102,6 +104,9 @@ func telegramMediaFileAttributesFromApiAttributes(_ attributes: [Api.DocumentAtt
                 let isVoice = (flags & (1 << 10)) != 0
                 let waveformBuffer: Data? = waveform?.makeData()
                 result.append(.Audio(isVoice: isVoice, duration: Int(duration), title: title, performer: performer, waveform: waveformBuffer))
+            case let .documentAttributeCustomEmoji(flags, alt, stickerSet):
+                let isFree = (flags & (1 << 0)) != 0
+                result.append(.CustomEmoji(isPremium: !isFree, alt: alt, packReference: StickerPackReference(apiInputSet: stickerSet)))
         }
     }
     return result
@@ -164,7 +169,7 @@ func telegramMediaFileFromApiDocument(_ document: Api.Document) -> TelegramMedia
                 }
             }
             
-            return TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.CloudFile, id: id), partialReference: nil, resource: CloudDocumentMediaResource(datacenterId: Int(dcId), fileId: id, accessHash: accessHash, size: Int(size), fileReference: fileReference.makeData(), fileName: fileNameFromFileAttributes(parsedAttributes)), previewRepresentations: previewRepresentations, videoThumbnails: videoThumbnails, immediateThumbnailData: immediateThumbnail, mimeType: mimeType, size: Int(size), attributes: parsedAttributes)
+            return TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.CloudFile, id: id), partialReference: nil, resource: CloudDocumentMediaResource(datacenterId: Int(dcId), fileId: id, accessHash: accessHash, size: size, fileReference: fileReference.makeData(), fileName: fileNameFromFileAttributes(parsedAttributes)), previewRepresentations: previewRepresentations, videoThumbnails: videoThumbnails, immediateThumbnailData: immediateThumbnail, mimeType: mimeType, size: size, attributes: parsedAttributes)
         case .documentEmpty:
             return nil
     }

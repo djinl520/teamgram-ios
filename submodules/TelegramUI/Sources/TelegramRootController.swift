@@ -15,6 +15,7 @@ import AppBundle
 import DatePickerNode
 import DebugSettingsUI
 import TabBarUI
+import PremiumUI
 
 public final class TelegramRootController: NavigationController {
     private let context: AccountContext
@@ -29,6 +30,8 @@ public final class TelegramRootController: NavigationController {
     private var permissionsDisposable: Disposable?
     private var presentationDataDisposable: Disposable?
     private var presentationData: PresentationData
+    
+    private var applicationInFocusDisposable: Disposable?
         
     public init(context: AccountContext) {
         self.context = context
@@ -70,6 +73,14 @@ public final class TelegramRootController: NavigationController {
                 }
             }
         })
+        
+        if context.sharedContext.applicationBindings.isMainApp {
+            self.applicationInFocusDisposable = (context.sharedContext.applicationBindings.applicationIsActive
+            |> distinctUntilChanged
+            |> deliverOn(Queue.mainQueue())).start(next: { value in
+                context.sharedContext.mainWindow?.setForceBadgeHidden(!value)
+            })
+        }
     }
     
     required public init(coder aDecoder: NSCoder) {
@@ -79,6 +90,7 @@ public final class TelegramRootController: NavigationController {
     deinit {
         self.permissionsDisposable?.dispose()
         self.presentationDataDisposable?.dispose()
+        self.applicationInFocusDisposable?.dispose()
     }
     
     public func addRootControllers(showCallsTab: Bool) {
@@ -113,11 +125,11 @@ public final class TelegramRootController: NavigationController {
         }
         
         let accountSettingsController = PeerInfoScreenImpl(context: self.context, updatedPresentationData: nil, peerId: self.context.account.peerId, avatarInitiallyExpanded: false, isOpenedFromChat: false, nearbyPeerDistance: nil, callMessages: [], isSettings: true)
-        accountSettingsController.tabBarItemDebugTapAction = { [weak self, weak accountSettingsController] in
-            guard let strongSelf = self, let accountSettingsController = accountSettingsController else {
+        accountSettingsController.tabBarItemDebugTapAction = { [weak self] in
+            guard let strongSelf = self else {
                 return
             }
-            accountSettingsController.push(debugController(sharedContext: strongSelf.context.sharedContext, context: strongSelf.context))
+            strongSelf.pushViewController(debugController(sharedContext: strongSelf.context.sharedContext, context: strongSelf.context))
         }
         controllers.append(accountSettingsController)
         

@@ -47,6 +47,10 @@ final class ChatContextResultPeekContent: PeekControllerContent {
         return arrowNode
     }
     
+    func fullScreenAccessoryNode(blurView: UIVisualEffectView) -> (PeekControllerAccessoryNode & ASDisplayNode)? {
+        return nil
+    }
+    
     func isEqual(to: PeekControllerContent) -> Bool {
         if let to = to as? ChatContextResultPeekContent {
             return self.contextResult == to.contextResult
@@ -141,6 +145,10 @@ private final class ChatContextResultPeekNode: ASDisplayNode, PeekControllerCont
             displayLink.isPaused = true
             displayLink.invalidate()
         }
+    }
+    
+    func ready() -> Signal<Bool, NoError> {
+        return .single(true)
     }
     
     func updateLayout(size: CGSize, transition: ContainedViewLayoutTransition) -> CGSize {

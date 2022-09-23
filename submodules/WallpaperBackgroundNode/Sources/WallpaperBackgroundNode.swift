@@ -12,6 +12,9 @@ import FastBlur
 import Svg
 import GZip
 import AppBundle
+import AnimatedStickerNode
+import TelegramAnimatedStickerNode
+import HierarchyTrackingLayer
 
 private let motionAmount: CGFloat = 32.0
 
@@ -41,6 +44,7 @@ public protocol WallpaperBubbleBackgroundNode: ASDisplayNode {
 
     func update(rect: CGRect, within containerSize: CGSize, transition: ContainedViewLayoutTransition)
     func update(rect: CGRect, within containerSize: CGSize, transition: CombinedTransition)
+    func update(rect: CGRect, within containerSize: CGSize, animator: ControlledTransitionAnimator)
     func offset(value: CGPoint, animationCurve: ContainedViewLayoutTransitionCurve, duration: Double)
     func offsetSpring(value: CGFloat, duration: Double, damping: CGFloat)
 }
@@ -58,6 +62,230 @@ public protocol WallpaperBackgroundNode: ASDisplayNode {
     func makeBubbleBackground(for type: WallpaperBubbleType) -> WallpaperBubbleBackgroundNode?
     
     func makeDimmedNode() -> ASDisplayNode?
+}
+
+private final class EffectImageLayer: SimpleLayer, GradientBackgroundPatternOverlayLayer {
+    enum SoftlightMode {
+        case whileAnimating
+        case always
+        case never
+    }
+    
+    var fillWithColorUntilLoaded: UIColor? {
+        didSet {
+            if self.fillWithColorUntilLoaded != oldValue {
+                if let fillWithColorUntilLoaded = self.fillWithColorUntilLoaded {
+                    if self.currentContents == nil {
+                        self.backgroundColor = fillWithColorUntilLoaded.cgColor
+                    } else {
+                        self.backgroundColor = nil
+                    }
+                } else {
+                    self.backgroundColor = nil
+                }
+            }
+        }
+    }
+    
+    var patternContentImage: UIImage? {
+        didSet {
+            if self.patternContentImage !== oldValue {
+                self.updateComposedImage()
+                self.updateContents()
+            }
+        }
+    }
+    
+    var composedContentImage: UIImage? {
+        didSet {
+            if self.composedContentImage !== oldValue {
+                self.updateContents()
+            }
+        }
+    }
+    
+    var softlightMode: SoftlightMode = .whileAnimating {
+        didSet {
+            if self.softlightMode != oldValue {
+                self.updateFilters()
+            }
+        }
+    }
+    
+    var isAnimating: Bool = false {
+        didSet {
+            if self.isAnimating != oldValue {
+                self.updateFilters()
+            }
+        }
+    }
+    
+    private var isUsingSoftlight: Bool = false
+    
+    var suspendCompositionUpdates: Bool = false
+    private var needsCompositionUpdate: Bool = false
+    
+    private func updateFilters() {
+        let useSoftlight: Bool
+        let useFilter: Bool
+        switch self.softlightMode {
+        case .whileAnimating:
+            useSoftlight = self.isAnimating
+            useFilter = useSoftlight
+        case .always:
+            useSoftlight = true
+            useFilter = useSoftlight
+        case .never:
+            useSoftlight = true
+            useFilter = false
+        }
+        if self.isUsingSoftlight != useSoftlight {
+            self.isUsingSoftlight = useSoftlight
+            
+            if self.isUsingSoftlight && useFilter {
+                self.compositingFilter = "softLightBlendMode"
+            } else {
+                self.compositingFilter = nil
+            }
+            
+            self.updateContents()
+            self.updateOpacity()
+        }
+    }
+    
+    private var allowSettingContents: Bool = false
+    private var currentContents: UIImage?
+    
+    override var contents: Any? {
+        get {
+            return super.contents
+        } set(value) {
+            if self.allowSettingContents {
+                super.contents = value
+            } else {
+                assert(false)
+            }
+        }
+    }
+    
+    private var allowSettingOpacity: Bool = false
+    var compositionOpacity: Float = 1.0 {
+        didSet {
+            if self.compositionOpacity != oldValue {
+                self.updateOpacity()
+                self.updateComposedImage()
+            }
+        }
+    }
+    
+    override var opacity: Float {
+        get {
+            return super.opacity
+        } set(value) {
+            if self.allowSettingOpacity {
+                super.opacity = value
+            } else {
+                assert(false)
+            }
+        }
+    }
+    
+    private var compositionData: (size: CGSize, backgroundImage: UIImage, backgroundImageHash: String)?
+    
+    func updateCompositionData(size: CGSize, backgroundImage: UIImage, backgroundImageHash: String) {
+        if self.compositionData?.size == size && self.compositionData?.backgroundImage === backgroundImage {
+            return
+        }
+        self.compositionData = (size, backgroundImage, backgroundImageHash)
+        
+        self.updateComposedImage()
+    }
+    
+    func updateCompositionIfNeeded() {
+        if self.needsCompositionUpdate {
+            self.needsCompositionUpdate = false
+            self.updateComposedImage()
+        }
+    }
+    
+    private static var cachedComposedImage: (size: CGSize, patternContentImage: UIImage, backgroundImageHash: String, image: UIImage)?
+    
+    private func updateComposedImage() {
+        switch self.softlightMode {
+        case .always, .never:
+            return
+        default:
+            break
+        }
+        
+        if self.suspendCompositionUpdates {
+            self.needsCompositionUpdate = true
+            return
+        }
+        
+        guard let (size, backgroundImage, backgroundImageHash) = self.compositionData, let patternContentImage = self.patternContentImage else {
+            return
+        }
+        
+        if let cachedComposedImage = EffectImageLayer.cachedComposedImage, cachedComposedImage.size == size, cachedComposedImage.backgroundImageHash == backgroundImageHash, cachedComposedImage.patternContentImage === patternContentImage {
+            self.composedContentImage = cachedComposedImage.image
+            return
+        }
+        
+        #if DEBUG
+        let startTime = CFAbsoluteTimeGetCurrent()
+        #endif
+        
+        let composedContentImage = generateImage(size, contextGenerator: { size, context in
+            context.draw(backgroundImage.cgImage!, in: CGRect(origin: CGPoint(), size: size))
+            context.setBlendMode(.softLight)
+            context.setAlpha(CGFloat(self.compositionOpacity))
+            context.draw(patternContentImage.cgImage!, in: CGRect(origin: CGPoint(), size: size))
+        }, opaque: true, scale: min(UIScreenScale, patternContentImage.scale))
+        self.composedContentImage = composedContentImage
+        
+        #if DEBUG
+        print("Wallpaper composed image updated in \((CFAbsoluteTimeGetCurrent() - startTime) * 1000.0) ms")
+        #endif
+        
+        if self.softlightMode == .whileAnimating, let composedContentImage = composedContentImage {
+            EffectImageLayer.cachedComposedImage = (size, patternContentImage, backgroundImageHash, composedContentImage)
+        }
+    }
+    
+    private func updateContents() {
+        var contents: UIImage?
+        
+        if self.isUsingSoftlight {
+            contents = self.patternContentImage
+        } else {
+            contents = self.composedContentImage
+        }
+        
+        if self.currentContents !== contents {
+            self.currentContents = contents
+            
+            self.allowSettingContents = true
+            self.contents = contents?.cgImage
+            self.allowSettingContents = false
+            
+            self.backgroundColor = nil
+        }
+    }
+    
+    private func updateOpacity() {
+        if self.isUsingSoftlight {
+            self.allowSettingOpacity = true
+            self.opacity = self.compositionOpacity
+            self.allowSettingOpacity = false
+            self.isOpaque = false
+        } else {
+            self.allowSettingOpacity = true
+            self.opacity = 1.0
+            self.allowSettingOpacity = false
+            self.isOpaque = true
+        }
+    }
 }
 
 final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode {
@@ -259,6 +487,23 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
                 }
             }
         }
+        
+        func update(rect: CGRect, within containerSize: CGSize, animator: ControlledTransitionAnimator) {
+            self.currentLayout = (rect, containerSize)
+
+            let shiftedContentsRect = CGRect(origin: CGPoint(x: rect.minX / containerSize.width, y: rect.minY / containerSize.height), size: CGSize(width: rect.width / containerSize.width, height: rect.height / containerSize.height))
+
+            animator.updateFrame(layer: self.contentNode.layer, frame: self.bounds, completion: nil)
+            animator.updateContentsRect(layer: self.contentNode.layer, contentsRect: shiftedContentsRect, completion: nil)
+            if let cleanWallpaperNode = self.cleanWallpaperNode {
+                animator.updateFrame(layer: cleanWallpaperNode.layer, frame: self.bounds, completion: nil)
+                animator.updateContentsRect(layer: cleanWallpaperNode.layer, contentsRect: shiftedContentsRect, completion: nil)
+            }
+            if let gradientWallpaperNode = self.gradientWallpaperNode {
+                animator.updateFrame(layer: gradientWallpaperNode.layer, frame: self.bounds, completion: nil)
+                animator.updateContentsRect(layer: gradientWallpaperNode.layer, contentsRect: shiftedContentsRect, completion: nil)
+            }
+        }
 
         func update(rect: CGRect, within containerSize: CGSize, transition: CombinedTransition) {
             self.currentLayout = (rect, containerSize)
@@ -327,7 +572,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
 
     private var gradientBackgroundNode: GradientBackgroundNode?
     private var outgoingBubbleGradientBackgroundNode: GradientBackgroundNode?
-    private let patternImageNode: ASImageNode
+    private let patternImageLayer: EffectImageLayer
     private var isGeneratingPatternImage: Bool = false
 
     private let bakedBackgroundView: UIImageView
@@ -427,6 +672,10 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
         var isLight: Bool
     }
     private static var cachedSharedPattern: (PatternKey, UIImage)?
+    
+    //private var inlineAnimationNodes: [(AnimatedStickerNode, CGPoint)] = []
+    //private let hierarchyTrackingLayer = HierarchyTrackingLayer()
+    //private var activateInlineAnimationTimer: SwiftSignalKit.Timer?
 
     private let _isReady = ValuePromise<Bool>(false, ignoreRepeated: true)
     var isReady: Signal<Bool, NoError> {
@@ -441,7 +690,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
         self.contentNode = ASDisplayNode()
         self.contentNode.contentMode = self.imageContentMode
 
-        self.patternImageNode = ASImageNode()
+        self.patternImageLayer = EffectImageLayer()
 
         self.bakedBackgroundView = UIImageView()
         self.bakedBackgroundView.isHidden = true
@@ -451,9 +700,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
         self.clipsToBounds = true
         self.contentNode.frame = self.bounds
         self.addSubnode(self.contentNode)
-        self.addSubnode(self.patternImageNode)
-        
-        //self.view.addSubview(self.bakedBackgroundView)
+        self.layer.addSublayer(self.patternImageLayer)
     }
 
     deinit {
@@ -491,7 +738,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
                 let gradientBackgroundNode = createGradientBackgroundNode(colors: mappedColors, useSharedAnimationPhase: self.useSharedAnimationPhase)
                 self.gradientBackgroundNode = gradientBackgroundNode
                 self.insertSubnode(gradientBackgroundNode, aboveSubnode: self.contentNode)
-                gradientBackgroundNode.addSubnode(self.patternImageNode)
+                gradientBackgroundNode.setPatternOverlay(layer: self.patternImageLayer)
             }
             self.gradientBackgroundNode?.updateColors(colors: mappedColors)
 
@@ -504,7 +751,8 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
             if let gradientBackgroundNode = self.gradientBackgroundNode {
                 self.gradientBackgroundNode = nil
                 gradientBackgroundNode.removeFromSupernode()
-                self.insertSubnode(self.patternImageNode, aboveSubnode: self.contentNode)
+                gradientBackgroundNode.setPatternOverlay(layer: nil)
+                self.layer.insertSublayer(self.patternImageLayer, above: self.contentNode.layer)
             }
 
             self.motionEnabled = wallpaper.settings?.motion ?? false
@@ -589,39 +837,43 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
 
             let intensity = CGFloat(file.settings.intensity ?? 50) / 100.0
             if intensity < 0 {
-                self.patternImageNode.alpha = 1.0
-                self.patternImageNode.layer.compositingFilter = nil
+                self.patternImageLayer.compositionOpacity = 1.0
+                self.patternImageLayer.softlightMode = .never
             } else {
-                self.patternImageNode.alpha = intensity
+                self.patternImageLayer.compositionOpacity = Float(intensity)
                 if patternIsBlack {
-                    self.patternImageNode.layer.compositingFilter = nil
+                    self.patternImageLayer.softlightMode = .never
                 } else {
-                    self.patternImageNode.layer.compositingFilter = "softLightBlendMode"
+                    if self.useSharedAnimationPhase {
+                        self.patternImageLayer.softlightMode = .whileAnimating
+                    } else {
+                        self.patternImageLayer.softlightMode = .always
+                    }
                 }
             }
-            self.patternImageNode.isHidden = false
+            
+            self.patternImageLayer.isHidden = false
             let invertPattern = intensity < 0
+            
+            self.patternImageLayer.fillWithColorUntilLoaded = invertPattern ? .black : nil
+            
             if invertPattern {
                 self.backgroundColor = .black
                 let contentAlpha = abs(intensity)
                 self.gradientBackgroundNode?.contentView.alpha = contentAlpha
                 self.contentNode.alpha = contentAlpha
-                if self.patternImageNode.image != nil {
-                    self.patternImageNode.backgroundColor = nil
-                } else {
-                    self.patternImageNode.backgroundColor = .black
-                }
             } else {
                 self.backgroundColor = nil
                 self.gradientBackgroundNode?.contentView.alpha = 1.0
                 self.contentNode.alpha = 1.0
-                self.patternImageNode.backgroundColor = nil
+                self.patternImageLayer.backgroundColor = nil
             }
         default:
             self.patternImageDisposable.set(nil)
             self.validPatternImage = nil
-            self.patternImageNode.isHidden = true
-            self.patternImageNode.backgroundColor = nil
+            self.patternImageLayer.isHidden = true
+            self.patternImageLayer.fillWithColorUntilLoaded = nil
+            self.patternImageLayer.backgroundColor = nil
             self.backgroundColor = nil
             self.gradientBackgroundNode?.contentView.alpha = 1.0
             self.contentNode.alpha = 1.0
@@ -676,7 +928,23 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
                         guard let strongSelf = self else {
                             return
                         }
+                        
                         if let generator = generator {
+                            /*generator = { arguments in
+                                let scale = arguments.scale ?? UIScreenScale
+                                let context = DrawingContext(size: arguments.drawingSize, scale: scale, clear: true)
+                                
+                                context.withFlippedContext { c in
+                                    if let path = getAppBundle().path(forResource: "PATTERN_static", ofType: "svg"), let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                                        if let image = drawSvgImage(data, CGSize(width: arguments.drawingSize.width * scale, height: arguments.drawingSize.height * scale), .clear, .black, false) {
+                                            c.draw(image.cgImage!, in: CGRect(origin: CGPoint(), size: arguments.drawingSize))
+                                        }
+                                    }
+                                }
+                                
+                                return context
+                            }*/
+                            
                             strongSelf.validPatternImage = ValidPatternImage(wallpaper: wallpaper, generate: generator)
                             strongSelf.validPatternGeneratedImage = nil
                             if let size = strongSelf.validLayout {
@@ -702,11 +970,6 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
             if invertPattern {
                 patternColor = .clear
                 patternBackgroundColor = .clear
-                if self.patternImageNode.image == nil {
-                    self.patternImageNode.backgroundColor = .black
-                } else {
-                    self.patternImageNode.backgroundColor = nil
-                }
             } else {
                 if patternIsLight {
                     patternColor = .black
@@ -714,7 +977,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
                     patternColor = .white
                 }
                 patternBackgroundColor = .clear
-                self.patternImageNode.backgroundColor = nil
+                self.patternImageLayer.backgroundColor = nil
             }
 
             let updatedGeneratedImage = ValidPatternGeneratedImage(wallpaper: validPatternImage.wallpaper, size: size, patternColor: patternColor.rgb, backgroundColor: patternBackgroundColor.rgb, invertPattern: invertPattern)
@@ -723,15 +986,21 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
                 self.validPatternGeneratedImage = updatedGeneratedImage
 
                 if let cachedValidPatternImage = WallpaperBackgroundNodeImpl.cachedValidPatternImage, cachedValidPatternImage.generated == updatedGeneratedImage {
-                    self.patternImageNode.image = cachedValidPatternImage.image
+                    self.patternImageLayer.suspendCompositionUpdates = true
                     self.updatePatternPresentation()
+                    self.patternImageLayer.patternContentImage = cachedValidPatternImage.image
+                    self.patternImageLayer.suspendCompositionUpdates = false
+                    self.patternImageLayer.updateCompositionIfNeeded()
                 } else {
                     let patternArguments = TransformImageArguments(corners: ImageCorners(), imageSize: size, boundingSize: size, intrinsicInsets: UIEdgeInsets(), custom: PatternWallpaperArguments(colors: [patternBackgroundColor], rotation: nil, customPatternColor: patternColor, preview: false), scale: min(2.0, UIScreenScale))
-                    if self.useSharedAnimationPhase || self.patternImageNode.image == nil {
+                    if self.useSharedAnimationPhase || self.patternImageLayer.contents == nil {
                         if let drawingContext = validPatternImage.generate(patternArguments) {
                             if let image = drawingContext.generateImage() {
-                                self.patternImageNode.image = image
+                                self.patternImageLayer.suspendCompositionUpdates = true
                                 self.updatePatternPresentation()
+                                self.patternImageLayer.patternContentImage = image
+                                self.patternImageLayer.suspendCompositionUpdates = false
+                                self.patternImageLayer.updateCompositionIfNeeded()
 
                                 if self.useSharedAnimationPhase {
                                     WallpaperBackgroundNodeImpl.cachedValidPatternImage = CachedValidPatternImage(generate: validPatternImage.generate, generated: updatedGeneratedImage, image: image)
@@ -751,7 +1020,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
                                     return
                                 }
                                 strongSelf.isGeneratingPatternImage = false
-                                strongSelf.patternImageNode.image = image
+                                strongSelf.patternImageLayer.patternContentImage = image
                                 strongSelf.updatePatternPresentation()
 
                                 if let image = image, strongSelf.useSharedAnimationPhase {
@@ -774,7 +1043,7 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
             }
         }
 
-        transition.updateFrame(node: self.patternImageNode, frame: CGRect(origin: CGPoint(), size: size))
+        transition.updateFrame(layer: self.patternImageLayer, frame: CGRect(origin: CGPoint(), size: size))
     }
     
     func updateLayout(size: CGSize, transition: ContainedViewLayoutTransition) {
@@ -795,6 +1064,13 @@ final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgroundNode 
         }
 
         self.loadPatternForSizeIfNeeded(size: size, transition: transition)
+        
+        /*for (animationNode, relativePosition) in self.inlineAnimationNodes {
+            let sizeNorm = CGSize(width: 1440, height: 2960)
+            let animationSize = CGSize(width: 512.0 / sizeNorm.width * size.width, height: 512.0 / sizeNorm.height * size.height)
+            animationNode.frame = CGRect(origin: CGPoint(x: relativePosition.x / sizeNorm.width * size.width, y: relativePosition.y / sizeNorm.height * size.height), size: animationSize)
+            animationNode.updateLayout(size: animationNode.frame.size)
+        }*/
                 
         if isFirstLayout && !self.frame.isEmpty {
             self.updateScale()
@@ -1104,6 +1380,23 @@ final class WallpaperBackgroundNodeMergedImpl: ASDisplayNode, WallpaperBackgroun
                 transition.animateView {
                     gradientWallpaperNode.layer.contentsRect = shiftedContentsRect
                 }
+            }
+        }
+        
+        func update(rect: CGRect, within containerSize: CGSize, animator: ControlledTransitionAnimator) {
+            self.currentLayout = (rect, containerSize)
+
+            let shiftedContentsRect = CGRect(origin: CGPoint(x: rect.minX / containerSize.width, y: rect.minY / containerSize.height), size: CGSize(width: rect.width / containerSize.width, height: rect.height / containerSize.height))
+
+            animator.updateFrame(layer: self.contentNode.layer, frame: self.bounds, completion: nil)
+            animator.updateContentsRect(layer: self.contentNode.layer, contentsRect: shiftedContentsRect, completion: nil)
+            if let cleanWallpaperNode = self.cleanWallpaperNode {
+                animator.updateFrame(layer: cleanWallpaperNode.layer, frame: self.bounds, completion: nil)
+                animator.updateContentsRect(layer: cleanWallpaperNode.layer, contentsRect: shiftedContentsRect, completion: nil)
+            }
+            if let gradientWallpaperNode = self.gradientWallpaperNode {
+                animator.updateFrame(layer: gradientWallpaperNode.layer, frame: self.bounds, completion: nil)
+                animator.updateContentsRect(layer: gradientWallpaperNode.layer, contentsRect: shiftedContentsRect, completion: nil)
             }
         }
 
@@ -1704,7 +1997,13 @@ private let sharedStorage = WallpaperBackgroundNodeMergedImpl.SharedStorage()
 
 public func createWallpaperBackgroundNode(context: AccountContext, forChatDisplay: Bool, useSharedAnimationPhase: Bool = false, useExperimentalImplementation: Bool = false) -> WallpaperBackgroundNode {
     if forChatDisplay && useExperimentalImplementation {
+        #if DEBUG
+        if #available(iOS 13.0, iOSApplicationExtension 13.0, *) {
+            return MetalWallpaperBackgroundNode()
+        }
+        #else
         return WallpaperBackgroundNodeMergedImpl(context: context, storage: useSharedAnimationPhase ? sharedStorage : nil)
+        #endif
     }
 
     return WallpaperBackgroundNodeImpl(context: context, useSharedAnimationPhase: useSharedAnimationPhase)

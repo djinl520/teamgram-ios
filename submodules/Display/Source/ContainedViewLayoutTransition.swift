@@ -3,6 +3,12 @@ import UIKit
 import AsyncDisplayKit
 import ObjCRuntimeUtils
 
+extension CGRect {
+    var center: CGPoint {
+        return CGPoint(x: self.midX, y: self.midY)
+    }
+}
+
 public enum ContainedViewLayoutTransitionCurve: Equatable, Hashable {
     case linear
     case easeInOut
@@ -146,13 +152,15 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                node.layer.removeAnimation(forKey: "position")
+                node.layer.removeAnimation(forKey: "bounds")
                 node.frame = frame
                 if let completion = completion {
                     completion(true)
                 }
             case let .animated(duration, curve):
                 let previousFrame: CGRect
-                if beginWithCurrentState, let presentation = node.layer.presentation() {
+                if beginWithCurrentState, (node.layer.animation(forKey: "position") != nil || node.layer.animation(forKey: "bounds") != nil), let presentation = node.layer.presentation() {
                     previousFrame = presentation.frame
                 } else {
                     previousFrame = node.frame
@@ -173,6 +181,8 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                node.layer.removeAnimation(forKey: "position")
+                node.layer.removeAnimation(forKey: "bounds")
                 node.position = frame.center
                 node.bounds = CGRect(origin: CGPoint(), size: frame.size)
                 if let completion = completion {
@@ -206,6 +216,8 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                layer.removeAnimation(forKey: "position")
+                layer.removeAnimation(forKey: "bounds")
                 layer.position = frame.center
                 layer.bounds = CGRect(origin: CGPoint(), size: frame.size)
                 if let completion = completion {
@@ -277,13 +289,14 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                node.layer.removeAnimation(forKey: "bounds")
                 node.bounds = bounds
                 if let completion = completion {
                     completion(true)
                 }
             case let .animated(duration, curve):
                 let previousBounds: CGRect
-                if beginWithCurrentState, let presentation = node.layer.presentation() {
+                if beginWithCurrentState, node.layer.animation(forKey: "bounds") != nil, let presentation = node.layer.presentation() {
                     previousBounds = presentation.bounds
                 } else {
                     previousBounds = node.bounds
@@ -304,6 +317,7 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                layer.removeAnimation(forKey: "bounds")
                 layer.bounds = bounds
                 if let completion = completion {
                     completion(true)
@@ -326,14 +340,15 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                node.layer.removeAnimation(forKey: "position")
                 node.position = position
                 if let completion = completion {
                     completion(true)
                 }
             case let .animated(duration, curve):
                 let previousPosition: CGPoint
-                if beginWithCurrentState {
-                    previousPosition = node.layer.presentation()?.position ?? node.position
+                if beginWithCurrentState, node.layer.animation(forKey: "position") != nil, let presentation = node.layer.presentation() {
+                    previousPosition = presentation.position
                 } else {
                     previousPosition = node.position
                 }
@@ -353,6 +368,7 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                layer.removeAnimation(forKey: "position")
                 layer.position = position
                 if let completion = completion {
                     completion(true)
@@ -615,13 +631,15 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                //view.layer.removeAnimation(forKey: "position")
+                //view.layer.removeAnimation(forKey: "bounds")
                 view.frame = frame
                 if let completion = completion {
                     completion(true)
                 }
             case let .animated(duration, curve):
                 let previousFrame: CGRect
-                if beginWithCurrentState, let presentation = view.layer.presentation() {
+                if beginWithCurrentState, (view.layer.animation(forKey: "position") != nil || view.layer.animation(forKey: "bounds") != nil), let presentation = view.layer.presentation() {
                     previousFrame = presentation.frame
                 } else {
                     previousFrame = view.frame
@@ -642,13 +660,15 @@ public extension ContainedViewLayoutTransition {
         } else {
             switch self {
             case .immediate:
+                layer.removeAnimation(forKey: "position")
+                layer.removeAnimation(forKey: "bounds")
                 layer.frame = frame
                 if let completion = completion {
                     completion(true)
                 }
             case let .animated(duration, curve):
                 let previousFrame: CGRect
-                if beginWithCurrentState, let presentation = layer.presentation() {
+                if beginWithCurrentState, (layer.animation(forKey: "position") != nil || layer.animation(forKey: "bounds") != nil), let presentation = layer.presentation() {
                     previousFrame = presentation.frame
                 } else {
                     previousFrame = layer.frame
@@ -749,6 +769,37 @@ public extension ContainedViewLayoutTransition {
         }
     }
     
+    func updateBackgroundColor(layer: CALayer, color: UIColor, completion: ((Bool) -> Void)? = nil) {
+        if let nodeColor = layer.backgroundColor, nodeColor == color.cgColor {
+            if let completion = completion {
+                completion(true)
+            }
+            return
+        }
+        
+        switch self {
+        case .immediate:
+            layer.backgroundColor = color.cgColor
+            if let completion = completion {
+                completion(true)
+            }
+        case let .animated(duration, curve):
+            if let nodeColor = layer.backgroundColor {
+                layer.backgroundColor = color.cgColor
+                layer.animate(from: nodeColor, to: color.cgColor, keyPath: "backgroundColor", timingFunction: curve.timingFunction, duration: duration, mediaTimingFunction: curve.mediaTimingFunction, completion: { result in
+                    if let completion = completion {
+                        completion(result)
+                    }
+                })
+            } else {
+                layer.backgroundColor = color.cgColor
+                if let completion = completion {
+                    completion(true)
+                }
+            }
+        }
+    }
+    
     func updateCornerRadius(node: ASDisplayNode, cornerRadius: CGFloat, completion: ((Bool) -> Void)? = nil) {
         if node.cornerRadius.isEqual(to: cornerRadius) {
             if let completion = completion {
@@ -759,6 +810,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            node.layer.removeAnimation(forKey: "cornerRadius")
             node.cornerRadius = cornerRadius
             if let completion = completion {
                 completion(true)
@@ -784,6 +836,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            layer.removeAnimation(forKey: "cornerRadius")
             layer.cornerRadius = cornerRadius
             if let completion = completion {
                 completion(true)
@@ -792,6 +845,31 @@ public extension ContainedViewLayoutTransition {
             let previousCornerRadius = layer.cornerRadius
             layer.cornerRadius = cornerRadius
             layer.animate(from: NSNumber(value: Float(previousCornerRadius)), to: NSNumber(value: Float(cornerRadius)), keyPath: "cornerRadius", timingFunction: curve.timingFunction, duration: duration, mediaTimingFunction: curve.mediaTimingFunction, completion: { result in
+                if let completion = completion {
+                    completion(result)
+                }
+            })
+        }
+    }
+    
+    func updateContentsRect(layer: CALayer, contentsRect: CGRect, completion: ((Bool) -> Void)? = nil) {
+        if layer.contentsRect == contentsRect {
+            if let completion = completion {
+                completion(true)
+            }
+            return
+        }
+        
+        switch self {
+        case .immediate:
+            layer.contentsRect = contentsRect
+            if let completion = completion {
+                completion(true)
+            }
+        case let .animated(duration, curve):
+            let previousContentsRect = layer.contentsRect
+            layer.contentsRect = contentsRect
+            layer.animate(from: NSValue(cgRect: previousContentsRect), to: NSValue(cgRect: contentsRect), keyPath: "contentsRect", timingFunction: curve.timingFunction, duration: duration, mediaTimingFunction: curve.mediaTimingFunction, completion: { result in
                 if let completion = completion {
                     completion(result)
                 }
@@ -1028,6 +1106,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            node.layer.removeAnimation(forKey: "sublayerTransform")
             node.layer.sublayerTransform = CATransform3DMakeScale(scale, scale, 1.0)
             if let completion = completion {
                 completion(true)
@@ -1060,6 +1139,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            node.layer.removeAnimation(forKey: "sublayerTransform")
             node.layer.sublayerTransform = CATransform3DMakeScale(scale, scale, 1.0)
             if let completion = completion {
                 completion(true)
@@ -1097,6 +1177,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            node.layer.removeAnimation(forKey: "sublayerTransform")
             node.layer.sublayerTransform = transform
             if let completion = completion {
                 completion(true)
@@ -1144,6 +1225,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            layer.removeAnimation(forKey: "sublayerTransform")
             layer.sublayerTransform = CATransform3DMakeScale(scale.x, scale.y, 1.0)
             if let completion = completion {
                 completion(true)
@@ -1192,6 +1274,7 @@ public extension ContainedViewLayoutTransition {
 
         switch self {
             case .immediate:
+                layer.removeAnimation(forKey: "transform")
                 layer.transform = CATransform3DMakeScale(scale.x, scale.y, 1.0)
                 if let completion = completion {
                     completion(true)
@@ -1219,6 +1302,7 @@ public extension ContainedViewLayoutTransition {
         
         switch self {
         case .immediate:
+            layer.removeAnimation(forKey: "sublayerTransform")
             layer.sublayerTransform = CATransform3DMakeTranslation(offset.x, offset.y, 0.0)
             if let completion = completion {
                 completion(true)
@@ -1481,6 +1565,7 @@ public protocol ControlledTransitionAnimator: AnyObject {
     func updateBounds(layer: CALayer, bounds: CGRect, completion: ((Bool) -> Void)?)
     func updateFrame(layer: CALayer, frame: CGRect, completion: ((Bool) -> Void)?)
     func updateCornerRadius(layer: CALayer, cornerRadius: CGFloat, completion: ((Bool) -> Void)?)
+    func updateContentsRect(layer: CALayer, contentsRect: CGRect, completion: ((Bool) -> Void)?)
 }
 
 protocol AnyValueProviding {
@@ -1877,6 +1962,21 @@ public final class ControlledTransition {
                 completion: completion
             ))
         }
+        
+        public func updateContentsRect(layer: CALayer, contentsRect: CGRect, completion: ((Bool) -> Void)?) {
+            if layer.contentsRect == contentsRect {
+                return
+            }
+            let fromValue = layer.presentation()?.contentsRect ?? layer.contentsRect
+            layer.contentsRect = contentsRect
+            self.add(animation: ControlledTransitionProperty(
+                layer: layer,
+                path: "contentsRect",
+                fromValue: fromValue,
+                toValue: contentsRect,
+                completion: completion
+            ))
+        }
     }
 
     public final class LegacyAnimator: ControlledTransitionAnimator {
@@ -1931,6 +2031,10 @@ public final class ControlledTransition {
         
         public func updateCornerRadius(layer: CALayer, cornerRadius: CGFloat, completion: ((Bool) -> Void)?) {
             self.transition.updateCornerRadius(layer: layer, cornerRadius: cornerRadius, completion: completion)
+        }
+        
+        public func updateContentsRect(layer: CALayer, contentsRect: CGRect, completion: ((Bool) -> Void)?) {
+            self.transition.updateContentsRect(layer: layer, contentsRect: contentsRect, completion: completion)
         }
     }
     
