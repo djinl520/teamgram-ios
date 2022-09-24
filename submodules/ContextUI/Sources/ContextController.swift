@@ -9,20 +9,25 @@ import TelegramCore
 import SwiftSignalKit
 import AccountContext
 import TextNodeWithEntities
+import EntityKeyboard
+import AnimationCache
+import MultiAnimationRenderer
+import UndoUI
 
 private let animationDurationFactor: Double = 1.0
 
-public protocol ContextControllerProtocol: AnyObject {
+public protocol ContextControllerProtocol: ViewController {
     var useComplexItemsTransitionAnimation: Bool { get set }
     var immediateItemsTransitionAnimation: Bool { get set }
     var getOverlayViews: (() -> [UIView])? { get set }
 
+    func dismiss(completion: (() -> Void)?)
+    
     func getActionsMinHeight() -> ContextController.ActionsHeight?
     func setItems(_ items: Signal<ContextController.Items, NoError>, minHeight: ContextController.ActionsHeight?)
     func setItems(_ items: Signal<ContextController.Items, NoError>, minHeight: ContextController.ActionsHeight?, previousActionsTransition: ContextController.PreviousActionsTransition)
     func pushItems(items: Signal<ContextController.Items, NoError>)
     func popItems()
-    func dismiss(completion: (() -> Void)?)
 }
 
 public enum ContextMenuActionItemTextLayout {
@@ -97,6 +102,7 @@ public final class ContextMenuActionItem {
     public let badge: ContextMenuActionBadge?
     public let icon: (PresentationTheme) -> UIImage?
     public let iconSource: ContextMenuActionItemIconSource?
+    public let textIcon: (PresentationTheme) -> UIImage?
     public let action: ((Action) -> Void)?
     
     convenience public init(
@@ -109,6 +115,7 @@ public final class ContextMenuActionItem {
         badge: ContextMenuActionBadge? = nil,
         icon: @escaping (PresentationTheme) -> UIImage?,
         iconSource: ContextMenuActionItemIconSource? = nil,
+        textIcon: @escaping (PresentationTheme) -> UIImage? = { _ in return nil },
         action: ((ContextControllerProtocol, @escaping (ContextMenuActionResult) -> Void) -> Void)?
     ) {
         self.init(
@@ -121,6 +128,7 @@ public final class ContextMenuActionItem {
             badge: badge,
             icon: icon,
             iconSource: iconSource,
+            textIcon: textIcon,
             action: action.flatMap { action in
                 return { impl in
                     action(impl.controller, impl.dismissWithResult)
@@ -139,6 +147,7 @@ public final class ContextMenuActionItem {
         badge: ContextMenuActionBadge? = nil,
         icon: @escaping (PresentationTheme) -> UIImage?,
         iconSource: ContextMenuActionItemIconSource? = nil,
+        textIcon: @escaping (PresentationTheme) -> UIImage? = { _ in return nil },
         action: ((Action) -> Void)?
     ) {
         self.id = id
@@ -150,6 +159,7 @@ public final class ContextMenuActionItem {
         self.badge = badge
         self.icon = icon
         self.iconSource = iconSource
+        self.textIcon = textIcon
         self.action = action
     }
 }
@@ -222,8 +232,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
     private var customPosition: CGPoint?
     private let contentContainerNode: ContextContentContainerNode
     private var actionsContainerNode: ContextActionsContainerNode
-    private var reactionContextNode: ReactionContextNode?
-    private var reactionContextNodeIsAnimatingOut = false
     
     private var didCompleteAnimationIn = false
     private var initialContinueGesturePoint: CGPoint?
@@ -239,6 +247,14 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
     private let itemsDisposable = MetaDisposable()
     
     private let blurBackground: Bool
+    
+    var overlayWantsToBeBelowKeyboard: Bool {
+        if let presentationNode = self.presentationNode {
+            return presentationNode.wantsDisplayBelowKeyboard()
+        } else {
+            return false
+        }
+    }
     
     init(
         account: Account,
@@ -383,15 +399,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                                     strongSelf.hapticFeedback.tap()
                                 }
                             }
-                            
-                            if let reactionContextNode = strongSelf.reactionContextNode {
-                                let reactionPoint = strongSelf.view.convert(localPoint, to: reactionContextNode.view)
-                                let highlightedReaction = reactionContextNode.reaction(at: reactionPoint)?.reaction
-                                if strongSelf.highlightedReaction?.rawValue != highlightedReaction?.rawValue {
-                                    strongSelf.highlightedReaction = highlightedReaction
-                                    strongSelf.hapticFeedback.tap()
-                                }
-                            }
                         }
                     }
                 }
@@ -409,9 +416,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                             if let highlightedActionNode = strongSelf.highlightedActionNode {
                                 strongSelf.highlightedActionNode = nil
                                 highlightedActionNode.performAction()
-                            }
-                            if let highlightedReaction = strongSelf.highlightedReaction {
-                                strongSelf.reactionContextNode?.performReactionSelection(reaction: highlightedReaction, isLarge: false)
                             }
                         } else {
                             if let highlightedActionNode = strongSelf.highlightedActionNode {
@@ -461,15 +465,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                                     strongSelf.hapticFeedback.tap()
                                 }
                             }
-                            
-                            if let reactionContextNode = strongSelf.reactionContextNode {
-                                let reactionPoint = strongSelf.view.convert(localPoint, to: reactionContextNode.view)
-                                let highlightedReaction = reactionContextNode.reaction(at: reactionPoint)?.reaction
-                                if strongSelf.highlightedReaction?.rawValue != highlightedReaction?.rawValue {
-                                    strongSelf.highlightedReaction = highlightedReaction
-                                    strongSelf.hapticFeedback.tap()
-                                }
-                            }
                         }
                     }
                 }
@@ -487,10 +482,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                             if let highlightedActionNode = strongSelf.highlightedActionNode {
                                 strongSelf.highlightedActionNode = nil
                                 highlightedActionNode.performAction()
-                            }
-                            
-                            if let highlightedReaction = strongSelf.highlightedReaction {
-                                strongSelf.reactionContextNode?.performReactionSelection(reaction: highlightedReaction, isLarge: false)
                             }
                         } else {
                             if let highlightedActionNode = strongSelf.highlightedActionNode {
@@ -575,15 +566,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                             actionNode.setIsHighlighted(true)
                         }
                     }
-                    
-                    if let reactionContextNode = self.reactionContextNode {
-                        let reactionPoint = self.view.convert(localPoint, to: reactionContextNode.view)
-                        let highlightedReaction = reactionContextNode.reaction(at: reactionPoint)?.reaction
-                        if self.highlightedReaction?.rawValue != highlightedReaction?.rawValue {
-                            self.highlightedReaction = highlightedReaction
-                            self.hapticFeedback.tap()
-                        }
-                    }
                 }
             case .ended, .cancelled:
                 if let presentationNode = self.presentationNode {
@@ -592,10 +574,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                     if let highlightedActionNode = self.highlightedActionNode {
                         self.highlightedActionNode = nil
                         highlightedActionNode.setIsHighlighted(false)
-                    }
-                    
-                    if let _ = self.reactionContextNode {
-                        self.highlightedReaction = nil
                     }
                 }
             default:
@@ -614,12 +592,21 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                     guard let strongSelf = self else {
                         return
                     }
+                    
                     if let validLayout = strongSelf.validLayout {
                         strongSelf.updateLayout(
                             layout: validLayout,
                             transition: transition,
                             previousActionsContainerNode: nil
                         )
+                    }
+                },
+                requestUpdateOverlayWantsToBeBelowKeyboard: { [weak self] transition in
+                    guard let strongSelf = self else {
+                        return
+                    }
+                    if let controller = strongSelf.getController() {
+                        controller.overlayWantsToBeBelowKeyboardUpdated(transition: transition)
                     }
                 },
                 requestDismiss: { [weak self] result in
@@ -671,6 +658,14 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                             )
                         }
                     },
+                    requestUpdateOverlayWantsToBeBelowKeyboard: { [weak self] transition in
+                        guard let strongSelf = self else {
+                            return
+                        }
+                        if let controller = strongSelf.getController() {
+                            controller.overlayWantsToBeBelowKeyboardUpdated(transition: transition)
+                        }
+                    },
                     requestDismiss: { [weak self] result in
                         guard let strongSelf = self else {
                             return
@@ -704,6 +699,14 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                             transition: transition,
                             previousActionsContainerNode: nil
                         )
+                    }
+                },
+                requestUpdateOverlayWantsToBeBelowKeyboard: { [weak self] transition in
+                    guard let strongSelf = self else {
+                        return
+                    }
+                    if let controller = strongSelf.getController() {
+                        controller.overlayWantsToBeBelowKeyboardUpdated(transition: transition)
                     }
                 },
                 requestDismiss: { [weak self] result in
@@ -904,10 +907,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                         localContentSourceFrame = self.view.convert(originalProjectedContentViewFrame.1, to: self.contentContainerNode.view.superview)
                     } else {
                         localContentSourceFrame = localSourceFrame
-                    }
-                    
-                    if let reactionContextNode = self.reactionContextNode {
-                        reactionContextNode.animateIn(from: CGRect(origin: CGPoint(x: originalProjectedContentViewFrame.1.minX, y: originalProjectedContentViewFrame.1.minY), size: contentParentNode.contentRect.size))
                     }
                     
                     self.actionsContainerNode.layer.animateSpring(from: NSValue(cgPoint: CGPoint(x: localSourceFrame.center.x - self.actionsContainerNode.position.x, y: localSourceFrame.center.y - self.actionsContainerNode.position.y + actionsOffset)), to: NSValue(cgPoint: CGPoint()), keyPath: "position", duration: actionsDuration, initialVelocity: 0.0, damping: springDamping, additive: true)
@@ -1243,10 +1242,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                 contentParentNode.updateAbsoluteRect?(self.contentContainerNode.frame.offsetBy(dx: 0.0, dy: -self.scrollNode.view.contentOffset.y + contentContainerOffset.y), self.bounds.size)
                 contentParentNode.applyAbsoluteOffset?(CGPoint(x: 0.0, y: -contentContainerOffset.y), transitionCurve, transitionDuration)
                 
-                if let reactionContextNode = self.reactionContextNode {
-                    reactionContextNode.animateOut(to: CGRect(origin: CGPoint(x: originalProjectedContentViewFrame.1.minX, y: originalProjectedContentViewFrame.1.minY), size: contentParentNode.contentRect.size), animatingOutToReaction: self.reactionContextNodeIsAnimatingOut)
-                }
-                
                 contentParentNode.willUpdateIsExtractedToContextPreview?(false, .animated(duration: 0.2, curve: .easeInOut))
             } else {
                 if let snapshotView = contentParentNode.contentNode.view.snapshotContentTree(keepTransform: true) {
@@ -1265,10 +1260,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                 
                 contentParentNode.contentNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2)
                 contentParentNode.willUpdateIsExtractedToContextPreview?(false, .animated(duration: 0.2, curve: .easeInOut))
-                
-                if let reactionContextNode = self.reactionContextNode {
-                    reactionContextNode.animateOut(to: nil, animatingOutToReaction: self.reactionContextNodeIsAnimatingOut)
-                }
             }
         case let .controller(source):
             guard let maybeContentNode = self.contentContainerNode.contentNode, case let .controller(controller) = maybeContentNode else {
@@ -1406,10 +1397,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                     completedContentNode = true
                     intermediateCompletion()
                 })
-                
-                if let reactionContextNode = self.reactionContextNode {
-                    reactionContextNode.animateOut(to: nil, animatingOutToReaction: self.reactionContextNodeIsAnimatingOut)
-                }
             }
         }
     }
@@ -1417,10 +1404,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
     func addRelativeContentOffset(_ offset: CGPoint, transition: ContainedViewLayoutTransition) {
         if let presentationNode = self.presentationNode {
             presentationNode.addRelativeContentOffset(offset, transition: transition)
-        }
-        if self.reactionContextNodeIsAnimatingOut, let reactionContextNode = self.reactionContextNode {
-            reactionContextNode.bounds = reactionContextNode.bounds.offsetBy(dx: 0.0, dy: offset.y)
-            transition.animateOffsetAdditive(node: reactionContextNode, offset: -offset.y)
         }
     }
     
@@ -1430,41 +1413,10 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
         }
     }
     
-    func animateOutToReaction(value: String, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, completion: @escaping () -> Void) {
+    func animateOutToReaction(value: MessageReaction.Reaction, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, reducedCurve: Bool, completion: @escaping () -> Void) {
         if let presentationNode = self.presentationNode {
-            presentationNode.animateOutToReaction(value: value, targetView: targetView, hideNode: hideNode, animateTargetContainer: animateTargetContainer, addStandaloneReactionAnimation: addStandaloneReactionAnimation, completion: completion)
-            return
+            presentationNode.animateOutToReaction(value: value, targetView: targetView, hideNode: hideNode, animateTargetContainer: animateTargetContainer, addStandaloneReactionAnimation: addStandaloneReactionAnimation, reducedCurve: reducedCurve, completion: completion)
         }
-        
-        guard let reactionContextNode = self.reactionContextNode else {
-            self.animateOut(result: .default, completion: completion)
-            return
-        }
-        var contentCompleted = false
-        var reactionCompleted = false
-        let intermediateCompletion: () -> Void = {
-            if contentCompleted && reactionCompleted {
-                completion()
-            }
-        }
-        
-        self.reactionContextNodeIsAnimatingOut = true
-        reactionContextNode.willAnimateOutToReaction(value: value)
-        reactionContextNode.animateOutToReaction(value: value, targetView: targetView, hideNode: hideNode, animateTargetContainer: animateTargetContainer, addStandaloneReactionAnimation: addStandaloneReactionAnimation, completion: { [weak self] in
-            guard let strongSelf = self else {
-                return
-            }
-            strongSelf.reactionContextNode?.removeFromSupernode()
-            strongSelf.reactionContextNode = nil
-            reactionCompleted = true
-            intermediateCompletion()
-        })
-        self.animateOut(result: .default, completion: {
-            contentCompleted = true
-            intermediateCompletion()
-        })
-        
-        self.isUserInteractionEnabled = false
     }
 
 
@@ -1508,26 +1460,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
         
         self.currentItems = items
         self.currentActionsMinHeight = minHeight
-        
-        if let reactionContextNode = self.reactionContextNode {
-            self.reactionContextNode = nil
-            reactionContextNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, removeOnCompletion: false, completion: { [weak reactionContextNode] _ in
-                reactionContextNode?.removeFromSupernode()
-            })
-        }
-        
-        if !items.reactionItems.isEmpty, let context = items.context {
-            let reactionContextNode = ReactionContextNode(context: context, theme: self.presentationData.theme, items: items.reactionItems)
-            self.reactionContextNode = reactionContextNode
-            self.addSubnode(reactionContextNode)
-            
-            reactionContextNode.reactionSelected = { [weak self] reaction, isLarge in
-                guard let strongSelf = self, let controller = strongSelf.getController() as? ContextController else {
-                    return
-                }
-                controller.reactionSelected?(reaction, isLarge)
-            }
-        }
 
         let previousActionsContainerNode = self.actionsContainerNode
         let previousActionsContainerFrame = previousActionsContainerNode.view.convert(previousActionsContainerNode.bounds, to: self.view)
@@ -1649,11 +1581,7 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
         transition.updateFrame(node: self.scrollNode, frame: CGRect(origin: CGPoint(), size: layout.size))
         
         let actionsSideInset: CGFloat = layout.safeInsets.left + 12.0
-        var contentTopInset: CGFloat = max(11.0, layout.statusBarHeight ?? 0.0)
-        
-        if let _ = self.reactionContextNode {
-            contentTopInset += 34.0
-        }
+        let contentTopInset: CGFloat = max(11.0, layout.statusBarHeight ?? 0.0)
 
         let actionsBottomInset: CGFloat = 11.0
         
@@ -1898,12 +1826,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                     let absoluteContentRect = contentContainerFrame.offsetBy(dx: 0.0, dy: -self.scrollNode.view.contentOffset.y)
                     
                     contentParentNode.updateAbsoluteRect?(absoluteContentRect, layout.size)
-                    
-                    if let reactionContextNode = self.reactionContextNode {
-                        let insets = layout.insets(options: [.statusBar])
-                        transition.updateFrame(node: reactionContextNode, frame: CGRect(origin: CGPoint(), size: layout.size))
-                        reactionContextNode.updateLayout(size: layout.size, insets: insets, anchorRect: CGRect(origin: CGPoint(x: absoluteContentRect.minX + contentParentNode.contentRect.minX, y: absoluteContentRect.minY + contentParentNode.contentRect.minY), size: contentParentNode.contentRect.size), transition: transition)
-                    }
                 }
             case let .controller(contentParentNode):
                 var projectedFrame: CGRect = convertFrame(contentParentNode.sourceView.bounds, from: contentParentNode.sourceView, to: self.view)
@@ -2034,14 +1956,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
                             transition.animateOffsetAdditive(node: self.scrollNode, offset: currentContainerFrame.minY - previousContainerFrame.minY)
                         }
                     }
-                    
-                    let absoluteContentRect = contentContainerFrame.offsetBy(dx: 0.0, dy: -self.scrollNode.view.contentOffset.y)
-                    
-                    if let reactionContextNode = self.reactionContextNode {
-                        let insets = layout.insets(options: [.statusBar])
-                        transition.updateFrame(node: reactionContextNode, frame: CGRect(origin: CGPoint(), size: layout.size))
-                        reactionContextNode.updateLayout(size: layout.size, insets: insets, anchorRect: CGRect(origin: CGPoint(x: absoluteContentRect.minX, y: absoluteContentRect.minY), size: contentSize), transition: transition)
-                    }
                 }
             }
         }
@@ -2130,14 +2044,24 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
             return nil
         }
         
-        if let presentationNode = self.presentationNode {
-            return presentationNode.hitTest(self.view.convert(point, to: presentationNode.view), with: event)
+        if let controller = self.getController() as? ContextController {
+            var innerResult: UIView?
+            controller.forEachController { c in
+                if let c = c as? UndoOverlayController {
+                    if let result = c.view.hitTest(self.view.convert(point, to: c.view), with: event) {
+                        innerResult = result
+                        return false
+                    }
+                }
+                return true
+            }
+            if let innerResult = innerResult {
+                return innerResult
+            }
         }
         
-        if let reactionContextNode = self.reactionContextNode {
-            if let result = reactionContextNode.hitTest(self.view.convert(point, to: reactionContextNode.view), with: event) {
-                return result
-            }
+        if let presentationNode = self.presentationNode {
+            return presentationNode.hitTest(self.view.convert(point, to: presentationNode.view), with: event)
         }
         
         let mappedPoint = self.view.convert(point, to: self.scrollNode.view)
@@ -2372,23 +2296,34 @@ public final class ContextController: ViewController, StandalonePresentableContr
         public var content: Content
         public var context: AccountContext?
         public var reactionItems: [ReactionContextItem]
+        public var selectedReactionItems: Set<MessageReaction.Reaction>
+        public var animationCache: AnimationCache?
+        public var getEmojiContent: ((AnimationCache, MultiAnimationRenderer) -> Signal<EmojiPagerContentComponent, NoError>)?
         public var disablePositionLock: Bool
         public var tip: Tip?
+        public var tipSignal: Signal<Tip?, NoError>?
 
-        public init(content: Content, context: AccountContext? = nil, reactionItems: [ReactionContextItem] = [], disablePositionLock: Bool = false, tip: Tip? = nil) {
+        public init(content: Content, context: AccountContext? = nil, reactionItems: [ReactionContextItem] = [], selectedReactionItems: Set<MessageReaction.Reaction> = Set(), animationCache: AnimationCache? = nil, getEmojiContent: ((AnimationCache, MultiAnimationRenderer) -> Signal<EmojiPagerContentComponent, NoError>)? = nil, disablePositionLock: Bool = false, tip: Tip? = nil, tipSignal: Signal<Tip?, NoError>? = nil) {
             self.content = content
             self.context = context
+            self.animationCache = animationCache
             self.reactionItems = reactionItems
+            self.selectedReactionItems = selectedReactionItems
+            self.getEmojiContent = getEmojiContent
             self.disablePositionLock = disablePositionLock
             self.tip = tip
+            self.tipSignal = tipSignal
         }
 
         public init() {
             self.content = .list([])
             self.context = nil
             self.reactionItems = []
+            self.selectedReactionItems = Set()
+            self.getEmojiContent = nil
             self.disablePositionLock = false
             self.tip = nil
+            self.tipSignal = nil
         }
     }
 
@@ -2397,11 +2332,46 @@ public final class ContextController: ViewController, StandalonePresentableContr
         case slide(forward: Bool)
     }
 
-    public enum Tip {
+    public enum Tip: Equatable {
         case textSelection
         case messageViewsPrivacy
         case messageCopyProtection(isChannel: Bool)
         case animatedEmoji(text: String?, arguments: TextNodeWithEntities.Arguments?,  file: TelegramMediaFile?, action: (() -> Void)?)
+        
+        public static func ==(lhs: Tip, rhs: Tip) -> Bool {
+            switch lhs {
+            case .textSelection:
+                if case .textSelection = rhs {
+                    return true
+                } else {
+                    return false
+                }
+            case .messageViewsPrivacy:
+                if case .messageViewsPrivacy = rhs {
+                    return true
+                } else {
+                    return false
+                }
+            case let .messageCopyProtection(isChannel):
+                if case .messageCopyProtection(isChannel) = rhs {
+                    return true
+                } else {
+                    return false
+                }
+            case let .animatedEmoji(text, _, file, _):
+                if case let .animatedEmoji(rhsText, _, rhsFile, _) = rhs {
+                    if text != rhsText {
+                        return false
+                    }
+                    if file?.fileId != rhsFile?.fileId {
+                        return false
+                    }
+                    return true
+                } else {
+                    return false
+                }
+            }
+        }
     }
 
     public final class ActionsHeight {
@@ -2429,6 +2399,16 @@ public final class ContextController: ViewController, StandalonePresentableContr
     
     private var animatedDidAppear = false
     private var wasDismissed = false
+    private var dismissOnInputClose: (result: ContextMenuActionResult, completion: (() -> Void)?)?
+    private var dismissToReactionOnInputClose: (value: MessageReaction.Reaction, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, completion: (() -> Void)?)?
+    
+    override public var overlayWantsToBeBelowKeyboard: Bool {
+        if self.isNodeLoaded {
+            return self.controllerNode.overlayWantsToBeBelowKeyboard
+        } else {
+            return false
+        }
+    }
     
     private var controllerNode: ContextControllerNode {
         return self.displayNode as! ContextControllerNode
@@ -2454,7 +2434,8 @@ public final class ContextController: ViewController, StandalonePresentableContr
     
     private var shouldBeDismissedDisposable: Disposable?
     
-    public var reactionSelected: ((ReactionContextItem, Bool) -> Void)?
+    public var reactionSelected: ((UpdateMessageReaction, Bool) -> Void)?
+    public var premiumReactionsSelected: (() -> Void)?
     
     public var getOverlayViews: (() -> [UIView])?
     
@@ -2529,7 +2510,18 @@ public final class ContextController: ViewController, StandalonePresentableContr
         self.displayNode = ContextControllerNode(account: self.account, controller: self, presentationData: self.presentationData, source: self.source, items: self.items, beginDismiss: { [weak self] result in
             self?.dismiss(result: result, completion: nil)
         }, recognizer: self.recognizer, gesture: self.gesture, beganAnimatingOut: { [weak self] in
-            self?.statusBar.statusBarStyle = .Ignore
+            guard let strongSelf = self else {
+                return
+            }
+            
+            strongSelf.statusBar.statusBarStyle = .Ignore
+            
+            strongSelf.forEachController { c in
+                if let c = c as? UndoOverlayController {
+                    c.dismiss()
+                }
+                return true
+            }
         }, attemptTransitionControllerIntoNavigation: { [weak self] in
             guard let strongSelf = self else {
                 return
@@ -2557,6 +2549,20 @@ public final class ContextController: ViewController, StandalonePresentableContr
         super.containerLayoutUpdated(layout, transition: transition)
         
         self.controllerNode.updateLayout(layout: layout, transition: transition, previousActionsContainerNode: nil)
+        
+        if (layout.inputHeight ?? 0.0) == 0.0 {
+            if let dismissOnInputClose = self.dismissOnInputClose {
+                self.dismissOnInputClose = nil
+                DispatchQueue.main.async {
+                    self.dismiss(result: dismissOnInputClose.result, completion: dismissOnInputClose.completion)
+                }
+            } else if let args = self.dismissToReactionOnInputClose {
+                self.dismissToReactionOnInputClose = nil
+                DispatchQueue.main.async {
+                    self.dismissWithReactionImpl(value: args.value, targetView: args.targetView, hideNode: args.hideNode, animateTargetContainer: args.animateTargetContainer, addStandaloneReactionAnimation: args.addStandaloneReactionAnimation, reducedCurve: true, completion: args.completion)
+                }
+            }
+        }
     }
     
     override public func viewDidAppear(_ animated: Bool) {
@@ -2615,8 +2621,15 @@ public final class ContextController: ViewController, StandalonePresentableContr
     }
     
     private func dismiss(result: ContextMenuActionResult, completion: (() -> Void)?) {
+        if viewTreeContainsFirstResponder(view: self.view) {
+            self.dismissOnInputClose = (result, completion)
+            self.view.endEditing(true)
+            return
+        }
+        
         if !self.wasDismissed {
             self.wasDismissed = true
+            
             self.controllerNode.animateOut(result: result, completion: { [weak self] in
                 self?.presentingViewController?.dismiss(animated: false, completion: nil)
                 completion?()
@@ -2638,10 +2651,20 @@ public final class ContextController: ViewController, StandalonePresentableContr
         self.dismissed?()
     }
     
-    public func dismissWithReaction(value: String, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, completion: (() -> Void)?) {
+    public func dismissWithReaction(value: MessageReaction.Reaction, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, completion: (() -> Void)?) {
+        self.dismissWithReactionImpl(value: value, targetView: targetView, hideNode: hideNode, animateTargetContainer: animateTargetContainer, addStandaloneReactionAnimation: addStandaloneReactionAnimation, reducedCurve: false, completion: completion)
+    }
+    
+    private func dismissWithReactionImpl(value: MessageReaction.Reaction, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, reducedCurve: Bool, completion: (() -> Void)?) {
+        if viewTreeContainsFirstResponder(view: self.view) {
+            self.dismissToReactionOnInputClose = (value, targetView, hideNode, animateTargetContainer, addStandaloneReactionAnimation, completion)
+            self.view.endEditing(true)
+            return
+        }
+        
         if !self.wasDismissed {
             self.wasDismissed = true
-            self.controllerNode.animateOutToReaction(value: value, targetView: targetView, hideNode: hideNode, animateTargetContainer: animateTargetContainer, addStandaloneReactionAnimation: addStandaloneReactionAnimation, completion: { [weak self] in
+            self.controllerNode.animateOutToReaction(value: value, targetView: targetView, hideNode: hideNode, animateTargetContainer: animateTargetContainer, addStandaloneReactionAnimation: addStandaloneReactionAnimation, reducedCurve: reducedCurve, completion: { [weak self] in
                 self?.presentingViewController?.dismiss(animated: false, completion: nil)
                 completion?()
             })
