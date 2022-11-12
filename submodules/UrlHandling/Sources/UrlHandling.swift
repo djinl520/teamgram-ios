@@ -9,14 +9,11 @@ import TelegramUIPreferences
 import TelegramNotices
 import AccountContext
 
-private let baseTelegramMePaths = ["telegram.me", "t.me", "telegram.dog"]
+private let baseTelegramMePaths = ["teamgram.me"]
 private let baseTelegraPhPaths = [
-    "telegra.ph/",
-    "te.legra.ph/",
-    "graph.org/",
-    "t.me/iv?",
-    "telegram.org/blog/",
-    "telegram.org/tour/"
+    "teamgram.me/iv?",
+    "teamgram.net/blog/",
+    "teamgram.net/tour/"
 ]
 
 extension ResolvedBotAdminRights {
@@ -153,7 +150,7 @@ public func parseInternalUrl(query: String) -> ParsedInternalUrl? {
                             }
                         }
                         if let _ = url {
-                            return .internalInstantView(url: "https://t.me/\(query)")
+                            return .internalInstantView(url: "https://teamgram.me/\(query)")
                         }
                     } else if peerName == "login" {
                         var code: String?

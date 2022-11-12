@@ -1076,7 +1076,7 @@ private func infoItems(data: PeerInfoScreenData?, context: AccountContext, prese
         }
         
         if let username = channel.username {
-            items[.peerInfo]!.append(PeerInfoScreenLabeledValueItem(id: ItemUsername, label: presentationData.strings.Channel_LinkItem, text: "https://t.me/\(username)", textColor: .accent, icon: .qrCode, action: { _ in
+            items[.peerInfo]!.append(PeerInfoScreenLabeledValueItem(id: ItemUsername, label: presentationData.strings.Channel_LinkItem, text: "https://teamgram.me/\(username)", textColor: .accent, icon: .qrCode, action: { _ in
                 interaction.openUsername(username)
             }, longTapAction: { sourceNode in
                 interaction.openPeerInfoContextMenu(.link, sourceNode)
@@ -4867,7 +4867,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
     }
     
     private func openUsername(value: String) {
-        let shareController = ShareController(context: self.context, subject: .url("https://t.me/\(value)"), updatedPresentationData: self.controller?.updatedPresentationData)
+        let shareController = ShareController(context: self.context, subject: .url("https://teamgram.me/\(value)"), updatedPresentationData: self.controller?.updatedPresentationData)
         shareController.completed = { [weak self] peerIds in
             guard let strongSelf = self else {
                 return
@@ -5654,7 +5654,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
                 return
             }
             if case let .user(peer) = peer, let username = peer.username {
-                let shareController = ShareController(context: strongSelf.context, subject: .url("https://t.me/\(username)"), updatedPresentationData: strongSelf.controller?.updatedPresentationData)
+                let shareController = ShareController(context: strongSelf.context, subject: .url("https://teamgram.me/\(username)"), updatedPresentationData: strongSelf.controller?.updatedPresentationData)
                 shareController.completed = { [weak self] peerIds in
                     guard let strongSelf = self else {
                         return
@@ -6032,7 +6032,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
                 let text: String
                 let content: UndoOverlayContent
                 if peer is TelegramChannel {
-                    text = "https://t.me/\(addressName)"
+                    text = "https://teamgram.me/\(addressName)"
                     content = .linkCopied(text: self.presentationData.strings.Conversation_LinkCopied)
                 } else {
                     text = "@" + addressName

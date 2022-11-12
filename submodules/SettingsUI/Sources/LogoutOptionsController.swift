@@ -196,7 +196,7 @@ public func logoutOptionsController(context: AccountContext, navigationControlle
         
         var faqUrl = presentationData.strings.Settings_FAQ_URL
         if faqUrl == "Settings.FAQ_URL" || faqUrl.isEmpty {
-            faqUrl = "https://telegram.org/faq#general"
+            faqUrl = "https://www2.teamgram.net/faq#general"
         }
         let resolvedUrl = resolveInstantViewUrl(account: context.account, url: faqUrl)
         

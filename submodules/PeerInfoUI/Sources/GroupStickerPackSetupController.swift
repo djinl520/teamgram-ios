@@ -205,7 +205,7 @@ private enum GroupStickerPackEntry: ItemListNodeEntry {
                 return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: prefix, textColor: theme.list.itemPrimaryTextColor), text: value, placeholder: placeholder, type: .regular(capitalization: false, autocorrection: false), spacing: 0.0, clearType: .always, tag: nil, sectionId: self.section, textUpdated: { value in
                     arguments.updateSearchText(value)
                 }, processPaste: { text in
-                    if let url = (URL(string: text) ?? URL(string: "http://" + text)), url.host == "t.me" || url.host == "telegram.me" {
+                    if let url = (URL(string: text) ?? URL(string: "http://" + text)), url.host == "teamgram.me" {
                         let prefix = "/addstickers/"
                         if url.path.hasPrefix(prefix) {
                             return String(url.path[url.path.index(url.path.startIndex, offsetBy: prefix.count)...])
@@ -266,7 +266,7 @@ private func groupStickerPackSetupControllerEntries(presentationData: Presentati
     }
     var entries: [GroupStickerPackEntry] = []
     
-    entries.append(.search(presentationData.theme, presentationData.strings, "t.me/addstickers/", presentationData.strings.Channel_Stickers_Placeholder, searchText))
+    entries.append(.search(presentationData.theme, presentationData.strings, "teamgram.me/addstickers/", presentationData.strings.Channel_Stickers_Placeholder, searchText))
     switch searchState {
         case .none:
             break

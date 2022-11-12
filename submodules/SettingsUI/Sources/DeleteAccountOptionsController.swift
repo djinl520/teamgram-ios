@@ -288,7 +288,7 @@ public func deleteAccountOptionsController(context: AccountContext, navigationCo
         
         var faqUrl = presentationData.strings.DeleteAccount_DeleteMessagesURL
         if faqUrl == "DeleteAccount.DeleteMessagesURL" || faqUrl.isEmpty {
-            faqUrl = "https://telegram.org/faq#q-can-i-delete-my-messages"
+            faqUrl = "https://www2.teamgram.net/faq#q-can-i-delete-my-messages"
         }
         let resolvedUrl = resolveInstantViewUrl(account: context.account, url: faqUrl)
 
@@ -323,7 +323,7 @@ public func deleteAccountOptionsController(context: AccountContext, navigationCo
         
         var faqUrl = presentationData.strings.Settings_FAQ_URL
         if faqUrl == "Settings.FAQ_URL" || faqUrl.isEmpty {
-            faqUrl = "https://telegram.org/faq#general"
+            faqUrl = "https://www2.teamgram.net/faq#general"
         }
         let resolvedUrl = resolveInstantViewUrl(account: context.account, url: faqUrl)
 

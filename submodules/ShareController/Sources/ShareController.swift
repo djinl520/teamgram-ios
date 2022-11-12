@@ -769,7 +769,7 @@ public final class ShareController: ViewController {
                             }
                             if let chatPeer = message.peers[message.id.peerId] as? TelegramChannel {
                                 if message.id.namespace == Namespaces.Message.Cloud, let addressName = chatPeer.addressName, !addressName.isEmpty {
-                                    url = "https://t.me/\(addressName)/\(message.id.id)"
+                                    url = "https://teamgram.me/\(addressName)/\(message.id.id)"
                                     if messageUrl == nil {
                                         messageUrl = url
                                     }
@@ -1064,7 +1064,7 @@ final class MessageStoryRenderer {
 
         self.addressNode = ImmediateTextNode()
         self.addressNode.displaysAsynchronously = false
-        self.addressNode.attributedText = NSAttributedString(string: "t.me/\(addressName)/\(message.id.id)", font: Font.medium(14.0), textColor: UIColor(rgb: 0xffffff))
+        self.addressNode.attributedText = NSAttributedString(string: "teamgram.me/\(addressName)/\(message.id.id)", font: Font.medium(14.0), textColor: UIColor(rgb: 0xffffff))
         self.addressNode.textShadowColor = UIColor(rgb: 0x929292, alpha: 0.8)
         
         self.containerNode.addSubnode(self.instantChatBackgroundNode)

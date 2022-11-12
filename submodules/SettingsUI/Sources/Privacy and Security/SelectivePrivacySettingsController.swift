@@ -616,7 +616,7 @@ private func selectivePrivacySettingsControllerEntries(presentationData: Present
         case .groupInvitations, .profilePhoto:
             break
     }
-    let phoneLink = "https://t.me/+\(phoneNumber)"
+    let phoneLink = "https://teamgram.me/+\(phoneNumber)"
     if let settingInfoText = settingInfoText {
         entries.append(.settingInfo(presentationData.theme, settingInfoText, phoneLink))
     }

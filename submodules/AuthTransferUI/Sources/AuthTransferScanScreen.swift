@@ -376,7 +376,7 @@ private final class AuthTransferScanScreenNode: ViewControllerTracingNode, UIScr
             guard let strongSelf = self else {
                 return
             }
-            let filteredCodes = codes.filter { $0.message.hasPrefix("tg://") }
+            let filteredCodes = codes.filter { $0.message.hasPrefix("tg2://") }
             if let code = filteredCodes.first, CGRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4).contains(code.boundingBox.center) {
                 if strongSelf.codeWithError != code.message {
                     strongSelf.codeWithError = nil
@@ -412,9 +412,9 @@ private final class AuthTransferScanScreenNode: ViewControllerTracingNode, UIScr
                                 if let url = attributes[NSAttributedString.Key(rawValue: TelegramTextAttributes.URL)] as? String {
                                     switch url {
                                     case "desktop":
-                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://getdesktop.telegram.org", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
+                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://teamgram.net/tdesktop", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
                                     case "web":
-                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://web.telegram.org", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
+                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://web.teamgram.net", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
                                     default:
                                         break
                                     }

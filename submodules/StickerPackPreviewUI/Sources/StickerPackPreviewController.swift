@@ -116,7 +116,7 @@ public final class StickerPackPreviewController: ViewController, StandalonePrese
                 }
                 
                 if let stickerPackContentsValue = strongSelf.stickerPackContentsValue, case let .result(info, _, _) = stickerPackContentsValue, !info.shortName.isEmpty {
-                    let shareController = ShareController(context: strongSelf.context, subject: .url("https://t.me/addstickers/\(info.shortName)"), externalShare: true)
+                    let shareController = ShareController(context: strongSelf.context, subject: .url("https://teamgram.me/addstickers/\(info.shortName)"), externalShare: true)
                     
                     let parentNavigationController = strongSelf.parentNavigationController
                     shareController.actionCompleted = { [weak parentNavigationController] in

@@ -518,7 +518,7 @@ private final class ImportStickerPackTitleAlertContentNode: AlertContentNode {
                 
         self.inputFieldNode = ImportStickerPackTitleInputFieldNode(theme: ptheme, placeholder: placeholder, maxLength: maxLength, keyboardType: asciiOnly ? .asciiCapable : .default, returnKeyType: asciiOnly ? .done : .next)
         if asciiOnly {
-            self.inputFieldNode.prefix = "t.me/addstickers/"
+            self.inputFieldNode.prefix = "teamgram.me/addstickers/"
         }
         self.inputFieldNode.text = value ?? ""
         

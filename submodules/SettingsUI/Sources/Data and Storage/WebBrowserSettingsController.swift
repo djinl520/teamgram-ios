@@ -81,7 +81,7 @@ private enum WebBrowserSettingsControllerEntry: ItemListNodeEntry {
 private func webBrowserSettingsControllerEntries(context: AccountContext, presentationData: PresentationData, selectedBrowser: String?) -> [WebBrowserSettingsControllerEntry] {
     var entries: [WebBrowserSettingsControllerEntry] = []
     
-    let options = availableOpenInOptions(context: context, item: .url(url: "http://telegram.org"))
+    let options = availableOpenInOptions(context: context, item: .url(url: "http://teamgram.net"))
     
     entries.append(.browserHeader(presentationData.theme, presentationData.strings.WebBrowser_DefaultBrowser))
     entries.append(.browser(presentationData.theme, presentationData.strings.WebBrowser_InAppSafari, .safari, nil, selectedBrowser == nil, 0))

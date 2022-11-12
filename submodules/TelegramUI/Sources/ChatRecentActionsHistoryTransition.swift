@@ -188,12 +188,12 @@ struct ChatRecentActionsEntry: Comparable, Identifiable {
                         var previousAttributes: [MessageAttribute] = []
                         var attributes: [MessageAttribute] = []
                         
-                        let prevText = "https://t.me/\(prev)"
+                        let prevText = "https://teamgram.me/\(prev)"
                         previousAttributes.append(TextEntitiesMessageAttribute(entities: [MessageTextEntity(range: 0 ..< prevText.count, type: .Url)]))
                         
                         let text: String
                         if !new.isEmpty {
-                            text = "https://t.me/\(new)"
+                            text = "https://teamgram.me/\(new)"
                             attributes.append(TextEntitiesMessageAttribute(entities: [MessageTextEntity(range: 0 ..< text.count, type: .Url)]))
                         } else {
                             text = self.presentationData.strings.Channel_AdminLog_EmptyMessageText

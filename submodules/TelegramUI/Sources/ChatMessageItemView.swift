@@ -809,7 +809,7 @@ public class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol 
                     item.controllerInteraction.sendMessage(button.title)
                 case let .url(url):
                     var concealed = true
-                    if url.hasPrefix("tg://") {
+                    if url.hasPrefix("tg2://") {
                         concealed = false
                     }
                     item.controllerInteraction.openUrl(url, concealed, nil, nil)

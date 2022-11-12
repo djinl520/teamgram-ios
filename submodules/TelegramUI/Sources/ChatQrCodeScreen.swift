@@ -1552,9 +1552,9 @@ private class QrContentNode: ASDisplayNode, ContentNode {
         
         let codeLink: String
         if let addressName = peer.addressName, !addressName.isEmpty {
-            codeLink = "https://t.me/\(peer.addressName ?? "")"
+            codeLink = "https://teamgram.me/\(peer.addressName ?? "")"
         } else if let peer = peer as? TelegramUser {
-            codeLink = "https://t.me/+\(peer.phone ?? "")"
+            codeLink = "https://teamgram.me/+\(peer.phone ?? "")"
         } else {
             codeLink = ""
         }
@@ -2157,7 +2157,7 @@ private class MessageContentNode: ASDisplayNode, ContentNode {
         
         let link: String
         if let message = self.messages.first, let chatPeer = message.peers[message.id.peerId] as? TelegramChannel, message.id.namespace == Namespaces.Message.Cloud, let addressName = chatPeer.addressName, !addressName.isEmpty {
-            link = "t.me/\(addressName)/\(message.id.id)"
+            link = "teamgram.me/\(addressName)/\(message.id.id)"
         } else {
             link = ""
         }

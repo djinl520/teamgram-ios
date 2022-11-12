@@ -219,7 +219,7 @@ private final class AuthDataTransferSplashScreenNode: ViewControllerTracingNode 
             }
             textNode.tapAttributeAction = { attributes, _ in
                 if let _ = attributes[NSAttributedString.Key(rawValue: "URL")] {
-                    context.sharedContext.openExternalUrl(context: context, urlContext: .generic, url: "https://desktop.telegram.org", forceExternal: true, presentationData: context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
+                    context.sharedContext.openExternalUrl(context: context, urlContext: .generic, url: "https://teamgram.net/tdesktop", forceExternal: true, presentationData: context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
                 }
             }
         }

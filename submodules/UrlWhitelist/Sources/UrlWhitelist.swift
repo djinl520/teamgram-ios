@@ -1,10 +1,7 @@
 import Foundation
 
 private let whitelistedHosts: Set<String> = Set([
-    "t.me",
-    "telegram.me",
-    "telegra.ph",
-    "telesco.pe"
+    "teamgram.me",
 ])
 
 public func isConcealedUrlWhitelisted(_ url: URL) -> Bool {
@@ -17,7 +14,7 @@ public func isConcealedUrlWhitelisted(_ url: URL) -> Bool {
             return true
         }
     }
-    if let host = url.host?.lowercased(), host == "telegram.org" {
+    if let host = url.host?.lowercased(), host == "teamgram.net" {
         let whitelistedNativePrefixes: Set<String> = Set([
             "/blog/",
             "/tour/"

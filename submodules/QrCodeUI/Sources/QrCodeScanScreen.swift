@@ -442,9 +442,9 @@ private final class QrCodeScanScreenNode: ViewControllerTracingNode, UIScrollVie
             let filteredCodes: [CameraCode]
             switch strongSelf.subject {
                 case .authTransfer:
-                    filteredCodes = codes.filter { $0.message.hasPrefix("tg://") }
+                    filteredCodes = codes.filter { $0.message.hasPrefix("tg2://") }
                 case .peer:
-                    filteredCodes = codes.filter { $0.message.hasPrefix("https://t.me/") || $0.message.hasPrefix("t.me/") }
+                    filteredCodes = codes.filter { $0.message.hasPrefix("https://teamgram.me/") || $0.message.hasPrefix("teamgram.me/") }
             }
             if let code = filteredCodes.first, CGRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4).contains(code.boundingBox.center) {
                 if strongSelf.codeWithError != code.message {
@@ -481,9 +481,9 @@ private final class QrCodeScanScreenNode: ViewControllerTracingNode, UIScrollVie
                                 if let url = attributes[NSAttributedString.Key(rawValue: TelegramTextAttributes.URL)] as? String {
                                     switch url {
                                     case "desktop":
-                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://getdesktop.telegram.org", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
+                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://teamgram.net/tdesktop", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
                                     case "web":
-                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://web.telegram.org", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
+                                        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: "https://web.teamgram.net", forceExternal: true, presentationData: self.context.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
                                     default:
                                         break
                                     }

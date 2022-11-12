@@ -12,7 +12,7 @@ private func rtfStringWithAppliedEntities(_ text: String, entities: [MessageText
     var index = 0
     test.enumerateAttribute(ChatTextInputAttributes.customEmoji, in: NSRange(location: 0, length: sourceString.length), using: { value, range, _ in
         if let value = value as? ChatTextInputTextCustomEmojiAttribute {
-            test.addAttribute(NSAttributedString.Key.link, value: URL(string: "tg://emoji?id=\(value.fileId)&t=\(index)")!, range: range)
+            test.addAttribute(NSAttributedString.Key.link, value: URL(string: "tg2://emoji?id=\(value.fileId)&t=\(index)")!, range: range)
             index += 1
         }
     })

@@ -680,7 +680,7 @@ public func dataAndStorageController(context: AccountContext, focusOnItemTag: Da
     )
     |> map { presentationData, state, dataAndStorageData, sharedData, contentSettingsConfiguration -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let webBrowserSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.webBrowserSettings]?.get(WebBrowserSettings.self) ?? WebBrowserSettings.defaultSettings
-        let options = availableOpenInOptions(context: context, item: .url(url: "https://telegram.org"))
+        let options = availableOpenInOptions(context: context, item: .url(url: "https://teamgram.net"))
         let defaultWebBrowser: String
         if let option = options.first(where: { $0.identifier == webBrowserSettings.defaultWebBrowser }) {
             defaultWebBrowser = option.title

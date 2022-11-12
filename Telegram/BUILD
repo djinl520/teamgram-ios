@@ -467,9 +467,8 @@ icloud_fragment = "" if not telegram_enable_icloud else """
 associated_domains_fragment = "" if telegram_bundle_id not in official_bundle_ids else """
 <key>com.apple.developer.associated-domains</key>
 <array>
-    <string>applinks:telegram.me</string>
-    <string>applinks:t.me</string>
-    <string>applinks:*.t.me</string>
+    <string>applinks:teamgram.me</string>
+    <string>applinks:*.teamgram.me</string>
 </array>
 """
 

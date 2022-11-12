@@ -1196,7 +1196,7 @@
 "DialogList.SearchSectionGlobal" = "Global Search";
 "DialogList.SearchSectionMessages" = "Messages";
 
-"Username.LinkHint" = "This link opens a chat with you in Teamgram:[\nhttps://t.me/%@]";
+"Username.LinkHint" = "This link opens a chat with you in Teamgram:[\nhttps://teamgram.me/%@]";
 "Username.LinkCopied" = "Copied link to clipboard";
 
 "SharedMedia.DeleteItemsConfirmation_1" = "Delete media file?";
@@ -1583,7 +1583,7 @@
 
 "Channel.Username.Title" = "Link";
 "Channel.Username.Help" = "You can choose a channel name on **Teamgram**. If you do, other people will be able to find your channel by this name.\n\nYou can use **a-z**, **0-9** and underscores. Minimum length is **5** characters.";
-"Channel.Username.LinkHint" = "This link opens your channel in Teamgram:[\nhttps://t.me/%@]";
+"Channel.Username.LinkHint" = "This link opens your channel in Teamgram:[\nhttps://teamgram.me/%@]";
 "Channel.Username.InvalidTooShort" = "Channel names must have at least 5 characters.";
 "Channel.Username.InvalidStartsWithNumber" = "Channel names can't start with a number.";
 "Channel.Username.InvalidCharacters" = "Sorry, this name is invalid.";
@@ -4015,7 +4015,7 @@ Unused sets are archived when you add more.";
 "EmptyGroupInfo.Subtitle" = "Groups can have:";
 "EmptyGroupInfo.Line1" = "Up to %@ members";
 "EmptyGroupInfo.Line2" = "Persistent chat history";
-"EmptyGroupInfo.Line3" = "Public links such as t.me/title";
+"EmptyGroupInfo.Line3" = "Public links such as teamgram.me/title";
 "EmptyGroupInfo.Line4" = "Admins with different rights";
 
 "WallpaperPreview.Title" = "Background Preview";
@@ -7356,7 +7356,7 @@ Sorry for the inconvenience.";
 "Attachment.DeselectedItems_1" = "%@ item deselected";
 "Attachment.DeselectedItems_any" = "%@ items deselected";
 
-"PrivacyPhoneNumberSettings.CustomPublicLink" = "Users who have your number saved in their contacts will also see it on Teamgram.\n\nThis public link opens a chat with you:\n[https://t.me/%@]()";
+"PrivacyPhoneNumberSettings.CustomPublicLink" = "Users who have your number saved in their contacts will also see it on Teamgram.\n\nThis public link opens a chat with you:\n[https://teamgram.me/%@]()";
 
 "DownloadList.DownloadingHeader" = "Downloading";
 "DownloadList.DownloadedHeader" = "Recently Downloaded";
@@ -7686,8 +7686,8 @@ Sorry for the inconvenience.";
 "Conversation.CopyProtectionSavingDisabledSecret" = "Saving is restricted";
 "Conversation.CopyProtectionForwardingDisabledSecret" = "Forwarding is restricted";
 
-"Settings.Terms_URL" = "https://telegram.org/tos";
-"Settings.PrivacyPolicy_URL" = "https://telegram.org/privacy";
+"Settings.Terms_URL" = "https://www2.teamgram.net/tos";
+"Settings.PrivacyPolicy_URL" = "https://www2.teamgram.net/privacy";
 
 "Stickers.PremiumPackInfoText" = "This pack contains premium stickers like this one.";
 "Stickers.PremiumPackView" = "View";
@@ -7712,7 +7712,7 @@ Sorry for the inconvenience.";
 
 "Premium.Limits.GroupsAndChannelsInfo" = "Join up to 1000 channels and large groups";
 "Premium.Limits.PinnedChatsInfo" = "Pin up to 10 chats in your main chat list";
-"Premium.Limits.PublicLinksInfo" = "Reserve up to 20 [t.me/name]() links";
+"Premium.Limits.PublicLinksInfo" = "Reserve up to 20 [teamgram.me/name]() links";
 "Premium.Limits.SavedGifsInfo" = "Save up to 400 GIFs in your Favorite GIFs";
 "Premium.Limits.FavedStickersInfo" = "Save up to 10 stickers in your Favorite stickers";
 "Premium.Limits.BioInfo" = "Add more symbols and use links in your bio";
@@ -7800,7 +7800,7 @@ Sorry for the inconvenience.";
 "DeleteAccount.MessageHistoryTitle" = "Your Message History";
 "DeleteAccount.MessageHistoryText" = "Your chat partners will keep their message history with you, including the messages you shared in secret chats.\n\nYou can remove any messages for both sides at any time, but this will not be possible if you delete your account.";
 
-"DeleteAccount.DeleteMessagesURL" = "https://telegram.org/faq#q-can-i-delete-my-messages";
+"DeleteAccount.DeleteMessagesURL" = "https://www2.teamgram.net/faq#q-can-i-delete-my-messages";
 
 "DeleteAccount.EnterPhoneNumber" = "Enter Your Phone Number";
 "DeleteAccount.InvalidPhoneNumberError" = "Invalid phone number. Please try again.";
