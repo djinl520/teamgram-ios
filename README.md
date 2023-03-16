@@ -17,7 +17,7 @@ There are several things we require from **all developers** for the moment.
 2. Clone the project from GitHub:
 
 ```
-git clone --recursive -j8 https://github.com/TelegramMessenger/Telegram-iOS.git
+git clone --recursive -j8 https://github.com/teamgram/teamgram-ios.git
 ```
 
 3. Adjust configuration parameters
@@ -25,6 +25,7 @@ git clone --recursive -j8 https://github.com/TelegramMessenger/Telegram-iOS.git
 ```
 mkdir -p $HOME/telegram-configuration
 cp -R build-system/example-configuration/* $HOME/telegram-configuration/
+cp -R build-system/fake-codesigning/profiles $HOME/telegram-configuration/
 ```
 
 - Modify the values in `variables.bzl`
@@ -67,6 +68,9 @@ python3 build-system/Make/Make.py \
     --disableProvisioningProfiles
 ```
 
+```
+sh r.sh
+```
 
 Tip: use `--disableExtensions` when developing to speed up development by not building application extensions and the WatchOS app.
 
