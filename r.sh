@@ -3,5 +3,6 @@ python3 build-system/Make/Make.py \
     generateProject \
     --configurationPath=build-system/appstore-configuration.json \
     --codesigningInformationPath="$HOME/telegram-configuration" \
-    --disableExtensions
+    --disableExtensions \
+    --disableProvisioningProfiles
 
