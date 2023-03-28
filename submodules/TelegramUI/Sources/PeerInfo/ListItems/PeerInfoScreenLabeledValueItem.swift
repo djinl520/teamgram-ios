@@ -32,7 +32,7 @@ final class PeerInfoScreenLabeledValueItem: PeerInfoScreenItem {
     let icon: PeerInfoScreenLabeledValueIcon?
     let action: ((ASDisplayNode) -> Void)?
     let longTapAction: ((ASDisplayNode) -> Void)?
-    let linkItemAction: ((TextLinkItemActionType, TextLinkItem) -> Void)?
+    let linkItemAction: ((TextLinkItemActionType, TextLinkItem, ASDisplayNode, CGRect?) -> Void)?
     let iconAction: (() -> Void)?
     let contextAction: ((ASDisplayNode, ContextGesture?, CGPoint?) -> Void)?
     let requestLayout: () -> Void
@@ -47,7 +47,7 @@ final class PeerInfoScreenLabeledValueItem: PeerInfoScreenItem {
         icon: PeerInfoScreenLabeledValueIcon? = nil,
         action: ((ASDisplayNode) -> Void)?,
         longTapAction: ((ASDisplayNode) -> Void)? = nil,
-        linkItemAction: ((TextLinkItemActionType, TextLinkItem) -> Void)? = nil,
+        linkItemAction: ((TextLinkItemActionType, TextLinkItem, ASDisplayNode, CGRect?) -> Void)? = nil,
         iconAction: (() -> Void)? = nil,
         contextAction: ((ASDisplayNode, ContextGesture?, CGPoint?) -> Void)? = nil,
         requestLayout: @escaping () -> Void
@@ -313,7 +313,7 @@ private final class PeerInfoScreenLabeledValueItemNode: PeerInfoScreenItemNode {
                 case .tap, .longTap:
                     if let item = self.item {
                         if let linkItem = self.linkItemAtPoint(location) {
-                            item.linkItemAction?(gesture == .tap ? .tap : .longTap, linkItem)
+                            item.linkItemAction?(gesture == .tap ? .tap : .longTap, linkItem, self.linkHighlightingNode ?? self, self.linkHighlightingNode?.rects.first)
                         } else if case .longTap = gesture {
                             item.longTapAction?(self)
                         } else if case .tap = gesture {
@@ -373,9 +373,11 @@ private final class PeerInfoScreenLabeledValueItemNode: PeerInfoScreenItemNode {
             self.iconNode.image = generateTintedImage(image: iconImage, color: presentationData.theme.list.itemAccentColor)
             self.iconNode.isHidden = false
             self.iconButtonNode.isHidden = false
+            self.iconButtonNode.accessibilityLabel = presentationData.strings.InviteLink_QRCode_Share
         } else {
             self.iconNode.isHidden = true
             self.iconButtonNode.isHidden = true
+            self.iconButtonNode.accessibilityLabel = nil
         }
         
         let additionalSideInset: CGFloat = !self.iconNode.isHidden ? 32.0 : 0.0
@@ -402,7 +404,7 @@ private final class PeerInfoScreenLabeledValueItemNode: PeerInfoScreenItemNode {
                 let entities = generateTextEntities(additionalText, enabledTypes: [.mention])
                 let attributedAdditionalText = stringWithAppliedEntities(additionalText, entities: entities, baseColor: presentationData.theme.list.itemPrimaryTextColor, linkColor: presentationData.theme.list.itemAccentColor, baseFont: baseFont, linkFont: linkFont, boldFont: boldFont, italicFont: italicFont, boldItalicFont: boldItalicFont, fixedFont: titleFixedFont, blockQuoteFont: baseFont, underlineLinks: false, message: nil)
                 
-                self.additionalTextNode.maximumNumberOfLines = 3
+                self.additionalTextNode.maximumNumberOfLines = 10
                 self.additionalTextNode.attributedText = attributedAdditionalText
             } else {
                 self.additionalTextNode.attributedText = nil
@@ -525,7 +527,6 @@ private final class PeerInfoScreenLabeledValueItemNode: PeerInfoScreenItemNode {
         self.activateArea.accessibilityLabel = item.label
         self.activateArea.accessibilityValue = item.text
         
-        
         let contentSize = CGSize(width: width, height: height)
         self.containerNode.frame = CGRect(origin: CGPoint(), size: contentSize)
         self.contextSourceNode.frame = CGRect(origin: CGPoint(), size: contentSize)
@@ -601,7 +602,8 @@ private final class PeerInfoScreenLabeledValueItemNode: PeerInfoScreenItemNode {
             }
             if textNode == nil {
                 let additionalTextNodeFrame = self.additionalTextNode.frame
-                if let (index, attributes) = self.additionalTextNode.attributesAtPoint(CGPoint(x: point.x - additionalTextNodeFrame.minX, y: point.y - additionalTextNodeFrame.minY)) {
+                let mappedPoint = CGPoint(x: point.x - additionalTextNodeFrame.minX, y: point.y - additionalTextNodeFrame.minY)
+                if mappedPoint.y > 0.0, let (index, attributes) = self.additionalTextNode.attributesAtPoint(mappedPoint) {
                     let possibleNames: [String] = [
                         TelegramTextAttributes.URL,
                         TelegramTextAttributes.PeerMention,

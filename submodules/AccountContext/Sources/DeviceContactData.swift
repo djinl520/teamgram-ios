@@ -191,7 +191,7 @@ private let phonebookUsernamePrefix = "https://teamgram.me/" + phonebookUsername
 
 public extension DeviceContactUrlData {
     convenience init(appProfile: PeerId) {
-        self.init(label: "Teamgram", value: "\(phonebookUsernamePrefix)\(appProfile.id)")
+        self.init(label: "Teamgram", value: "\(phonebookUsernamePrefix)\(appProfile.id._internalGetInt64Value())")
     }
 }
 

@@ -2,6 +2,7 @@ import Foundation
 
 private let whitelistedHosts: Set<String> = Set([
     "teamgram.me",
+    "fragment.com"
 ])
 
 public func isConcealedUrlWhitelisted(_ url: URL) -> Bool {
