@@ -742,7 +742,7 @@
 "Settings.ChatBackground" = "Chat Background";
 "Settings.Support" = "Ask a Question";
 "Settings.FAQ" = "Teamgram FAQ";
-"Settings.FAQ_URL" = "https://www2.teamgram.net/faq#general";
+"Settings.FAQ_URL" = "https://teamgram.net/faq#general";
 "Settings.FAQ_Intro" = "Please note that Teamgram Support is done by volunteers. We try to respond as quickly as possible, but it may take a while.\n\nPlease take a look at the Teamgram FAQ: it has important troubleshooting tips and answers to most questions.";
 "Settings.FAQ_Button" = "FAQ";
 "Settings.SaveIncomingPhotos" = "Save Incoming Photos";
@@ -3330,7 +3330,7 @@ Unused sets are archived when you add more.";
 "Passport.InfoTitle" = "What is Teamgram Passport?";
 "Passport.InfoText" = "With **Teamgram Passport** you can easily sign up for websites and services that require identity verification.\n\nYour information, personal data, and documents are protected by end-to-end encryption. Nobody, including Teamgram, can access them without your permission.";
 "Passport.InfoLearnMore" = "Learn More";
-"Passport.InfoFAQ_URL" = "https://www2.teamgram.net/faq#passport";
+"Passport.InfoFAQ_URL" = "https://teamgram.net/faq#passport";
 
 "Passport.PassportInformation" = "PASSPORT INFORMATION";
 "Passport.RequestedInformation" = "REQUESTED INFORMATION";
@@ -7834,7 +7834,7 @@ Sorry for the inconvenience.";
 "DeleteAccount.MessageHistoryTitle" = "Your Message History";
 "DeleteAccount.MessageHistoryText" = "Your chat partners will keep their message history with you, including the messages you shared in secret chats.\n\nYou can remove any messages for both sides at any time, but this will not be possible if you delete your account.";
 
-"DeleteAccount.DeleteMessagesURL" = "https://www2.teamgram.net/faq#q-can-i-delete-my-messages";
+"DeleteAccount.DeleteMessagesURL" = "https://teamgram.net/faq#q-can-i-delete-my-messages";
 
 "DeleteAccount.EnterPhoneNumber" = "Enter Your Phone Number";
 "DeleteAccount.InvalidPhoneNumberError" = "Invalid phone number. Please try again.";

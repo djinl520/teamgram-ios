@@ -64,3 +64,5 @@ bazel-testlogs/*
 build-input/*
 **/*.pyc
 *.pyc
+build-system/dev-configuration.json
+build-system/dev-codesigning

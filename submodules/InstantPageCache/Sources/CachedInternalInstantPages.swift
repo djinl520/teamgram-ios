@@ -28,7 +28,7 @@ private let refreshTimeout: Int32 = 60 * 60 * 12
 public func cachedFaqInstantPage(context: AccountContext) -> Signal<ResolvedUrl, NoError> {
     var faqUrl = context.sharedContext.currentPresentationData.with { $0 }.strings.Settings_FAQ_URL
     if faqUrl == "Settings.FAQ_URL" || faqUrl.isEmpty {
-        faqUrl = "https://www2.teamgram.net/faq#general-questions"
+        faqUrl = "https://teamgram.net/faq#general-questions"
     }
     return cachedInternalInstantPage(context: context, url: faqUrl)
 }
