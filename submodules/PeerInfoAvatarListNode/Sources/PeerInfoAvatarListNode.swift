@@ -3,7 +3,6 @@ import UIKit
 import AsyncDisplayKit
 import Display
 import SwiftSignalKit
-import Postbox
 import TelegramCore
 import AccountContext
 import TelegramPresentationData
@@ -17,6 +16,9 @@ import RadialStatusNode
 import TelegramUIPreferences
 import AvatarNode
 import AvatarVideoNode
+import ComponentFlow
+import ComponentDisplayAdapters
+import StorySetIndicatorComponent
 
 private class PeerInfoAvatarListLoadingStripNode: ASImageNode {
     private var currentInHierarchy = false
@@ -94,16 +96,16 @@ public enum PeerInfoAvatarListItem: Equatable {
     case topImage([ImageRepresentationWithReference], [VideoRepresentationWithReference], Data?)
     case image(TelegramMediaImageReference?, [ImageRepresentationWithReference], [VideoRepresentationWithReference], Data?, Bool, TelegramMediaImage.EmojiMarkup?)
     
-    var id: MediaResourceId {
+    var id: EngineMediaResource.Id {
         switch self {
         case .custom:
-            return MediaResourceId(CustomListItemResourceId().uniqueId)
+            return EngineMediaResource.Id(CustomListItemResourceId().uniqueId)
         case let .topImage(representations, _, _):
             let representation = largestImageRepresentation(representations.map { $0.representation }) ?? representations[representations.count - 1].representation
-            return representation.resource.id
+            return EngineMediaResource.Id(representation.resource.id)
         case let .image(_, representations, _, _, _, _):
             let representation = largestImageRepresentation(representations.map { $0.representation }) ?? representations[representations.count - 1].representation
-            return representation.resource.id
+            return EngineMediaResource.Id(representation.resource.id)
         }
     }
     
@@ -205,7 +207,7 @@ public enum PeerInfoAvatarListItem: Equatable {
 
 public final class PeerInfoAvatarListItemNode: ASDisplayNode {
     private let context: AccountContext
-    private let peer: Peer
+    private let peer: EnginePeer
     public let imageNode: TransformImageNode
     private var videoNode: UniversalVideoNode?
     private var videoContent: NativeVideoContent?
@@ -259,14 +261,14 @@ public final class PeerInfoAvatarListItemNode: ASDisplayNode {
                 }
                 if let videoContent = self.videoContent {
                     let duration: Double = (self.videoStartTimestamp ?? 0.0) + 4.0
-                    self.preloadDisposable.set(preloadVideoResource(postbox: self.context.account.postbox, userLocation: .other, userContentType: .video, resourceReference: videoContent.fileReference.resourceReference(videoContent.fileReference.media.resource), duration: duration).start())
+                    self.preloadDisposable.set(preloadVideoResource(postbox: self.context.account.postbox, userLocation: .other, userContentType: .video, resourceReference: videoContent.fileReference.resourceReference(videoContent.fileReference.media.resource), duration: duration).startStrict())
                 }
             }
             self.markupNode?.updateVisibility(isCentral)
         }
     }
     
-    init(context: AccountContext, peer: Peer) {
+    init(context: AccountContext, peer: EnginePeer) {
         self.context = context
         self.peer = peer
         self.imageNode = TransformImageNode()
@@ -289,7 +291,7 @@ public final class PeerInfoAvatarListItemNode: ASDisplayNode {
             } else {
                 return .single(value)
             }
-        } |> distinctUntilChanged, self.loadingProgress.get() |> distinctUntilChanged)).start(next: { [weak self] isLoading, progress in
+        } |> distinctUntilChanged, self.loadingProgress.get() |> distinctUntilChanged)).startStrict(next: { [weak self] isLoading, progress in
             guard let strongSelf = self else {
                 return
             }
@@ -316,6 +318,7 @@ public final class PeerInfoAvatarListItemNode: ASDisplayNode {
         self.statusDisposable.dispose()
         self.playbackStartDisposable.dispose()
         self.preloadDisposable.dispose()
+        self.loadingProgressDisposable.dispose()
     }
     
     private func updateStatus() {
@@ -385,7 +388,7 @@ public final class PeerInfoAvatarListItemNode: ASDisplayNode {
                 return playing
             }
             |> take(1)
-            |> deliverOnMainQueue).start(error: { [weak self] _ in
+            |> deliverOnMainQueue).startStrict(error: { [weak self] _ in
                 if let strongSelf = self {
                     if let _ = strongSelf.videoNode {
                         videoNode.seek(0.0)
@@ -417,7 +420,7 @@ public final class PeerInfoAvatarListItemNode: ASDisplayNode {
         self.statusPromise.set(videoNode.status |> map { ($0, videoStartTimestamp) })
         
         self.statusDisposable.set((self.mediaStatus
-        |> deliverOnMainQueue).start(next: { [weak self] mediaStatus in
+        |> deliverOnMainQueue).startStrict(next: { [weak self] mediaStatus in
             if let strongSelf = self {
                 if let mediaStatusAndStartTimestamp = mediaStatus {
                     strongSelf.playerStatus = mediaStatusAndStartTimestamp.0
@@ -511,8 +514,8 @@ public final class PeerInfoAvatarListItemNode: ASDisplayNode {
                 self.didSetReady = true
                 self.isReady.set(.single(true))
             }
-        } else if let video = videoRepresentations.last, let peerReference = PeerReference(self.peer) {
-            let videoFileReference = FileMediaReference.avatarList(peer: peerReference, media: TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: 0), partialReference: nil, resource: video.representation.resource, previewRepresentations: representations.map { $0.representation }, videoThumbnails: [], immediateThumbnailData: immediateThumbnailData, mimeType: "video/mp4", size: nil, attributes: [.Animated, .Video(duration: 0, size: video.representation.dimensions, flags: [])]))
+        } else if let video = videoRepresentations.last, let peerReference = PeerReference(self.peer._asPeer()) {
+            let videoFileReference = FileMediaReference.avatarList(peer: peerReference, media: TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: 0), partialReference: nil, resource: video.representation.resource, previewRepresentations: representations.map { $0.representation }, videoThumbnails: [], immediateThumbnailData: immediateThumbnailData, mimeType: "video/mp4", size: nil, attributes: [.Animated, .Video(duration: 0, size: video.representation.dimensions, flags: [], preloadSize: nil)]))
             let videoContent = NativeVideoContent(id: .profileVideo(id, nil), userLocation: .other, fileReference: videoFileReference, streamVideo: isMediaStreamable(resource: video.representation.resource) ? .conservative : .none, loopVideo: true, enableSound: false, fetchAutomatically: true, onlyFullSizeThumbnail: fullSizeOnly, useLargeThumbnail: true, autoFetchFullSizeThumbnail: true, startTimestamp: video.representation.startTimestamp, continuePlayingWithoutSoundOnLostAudioSession: false, placeholderColor: .clear, storeAfterDownload: nil)
             
             if videoContent.id != self.videoContent?.id {
@@ -570,13 +573,23 @@ private let fadeWidth: CGFloat = 70.0
 public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
     private let context: AccountContext
     private let isSettings: Bool
-    public var peer: Peer?
+    public var peer: EnginePeer?
     
     public let controlsContainerNode: ASDisplayNode
     public let controlsClippingNode: ASDisplayNode
     public let controlsClippingOffsetNode: ASDisplayNode
     public let topShadowNode: ASImageNode
     public let bottomShadowNode: ASImageNode
+    
+    public var storyParams: (peer: EnginePeer, items: [EngineStoryItem], count: Int, hasUnseen: Bool, hasUnseenPrivate: Bool)?
+    private var expandedStorySetIndicator: ComponentView<Empty>?
+    public var expandedStorySetIndicatorTransitionView: (UIView, CGRect)? {
+        if let setView = self.expandedStorySetIndicator?.view as? StorySetIndicatorComponent.View {
+            return setView.transitionView
+        } else {
+            return nil
+        }
+    }
     
     public let contentNode: ASDisplayNode
     let leftHighlightNode: ASDisplayNode
@@ -590,7 +603,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
     
     public private(set) var galleryEntries: [AvatarGalleryEntry] = []
     private var items: [PeerInfoAvatarListItem] = []
-    private var itemNodes: [MediaResourceId: PeerInfoAvatarListItemNode] = [:]
+    private var itemNodes: [EngineMediaResource.Id: PeerInfoAvatarListItemNode] = [:]
     private var stripNodes: [ASImageNode] = []
     private var activeStripNode: ASImageNode
     private var loadingStripNode: PeerInfoAvatarListLoadingStripNode
@@ -612,6 +625,8 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
     private var ignoreNextProfilePhotoUpdate = false
     public var itemsUpdated: (([PeerInfoAvatarListItem]) -> Void)?
     public var currentIndexUpdated: (() -> Void)?
+    
+    public var openStories: (() -> Void)?
     
     public let isReady = Promise<Bool>()
     private var didSetReady = false
@@ -833,8 +848,8 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
         self.controlsContainerNode.addSubnode(self.stripContainerNode)
         self.controlsClippingNode.addSubnode(self.controlsContainerNode)
         self.controlsClippingOffsetNode.addSubnode(self.controlsClippingNode)
-        self.stripContainerNode.addSubnode(self.setByYouNode)
-        self.stripContainerNode.addSubnode(self.setByYouImageNode)
+        self.addSubnode(self.setByYouNode)
+        self.addSubnode(self.setByYouImageNode)
         
         self.view.disablesInteractiveTransitionGestureRecognizerNow = { [weak self] in
             guard let strongSelf = self else {
@@ -915,6 +930,12 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
     }
     
     public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if self.isExpanded, let expandedStorySetIndicatorView = self.expandedStorySetIndicator?.view {
+            if let result = expandedStorySetIndicatorView.hitTest(self.view.convert(point, to: expandedStorySetIndicatorView), with: event) {
+                return result
+            }
+        }
+        
         return super.hitTest(point, with: event)
     }
     
@@ -1118,16 +1139,20 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
             index += 1
         }
         
-        
-        if let peer = self.peer, peer is TelegramGroup || peer is TelegramChannel, deletedIndex == 0 {
-            self.galleryEntries = []
-            self.items = []
-            self.itemsUpdated?([])
-            self.currentIndex = 0
-            if let size = self.validLayout {
-                self.updateItems(size: size, update: true, transition: .immediate, stripTransition: .immediate, synchronous: true)
+        switch self.peer {
+        case .legacyGroup, .channel:
+            if deletedIndex == 0 {
+                self.galleryEntries = []
+                self.items = []
+                self.itemsUpdated?([])
+                self.currentIndex = 0
+                if let size = self.validLayout {
+                    self.updateItems(size: size, update: true, transition: .immediate, stripTransition: .immediate, synchronous: true)
+                }
+                return true
             }
-            return true
+        default:
+            break
         }
         
         self.galleryEntries = normalizeEntries(entries)
@@ -1146,7 +1171,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
     }
     
     private var additionalEntryProgress: Signal<Float?, NoError>? = nil
-    public func update(size: CGSize, peer: Peer?, customNode: ASDisplayNode? = nil, additionalEntry: Signal<(TelegramMediaImageRepresentation, Float)?, NoError> = .single(nil), isExpanded: Bool, transition: ContainedViewLayoutTransition) {
+    public func update(size: CGSize, peer: EnginePeer?, customNode: ASDisplayNode? = nil, additionalEntry: Signal<(TelegramMediaImageRepresentation, Float)?, NoError> = .single(nil), isExpanded: Bool, transition: ContainedViewLayoutTransition) {
         self.validLayout = size
         let previousExpanded = self.isExpanded
         self.isExpanded = isExpanded
@@ -1164,7 +1189,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
                 return representation.flatMap { AvatarGalleryEntry(representation: $0.0, peer: peer) }
             }
             
-            self.disposable.set(combineLatest(queue: Queue.mainQueue(), peerInfoProfilePhotosWithCache(context: self.context, peerId: peer.id), entry).start(next: { [weak self] completeAndEntries, entry in
+            self.disposable.set(combineLatest(queue: Queue.mainQueue(), peerInfoProfilePhotosWithCache(context: self.context, peerId: peer.id), entry).startStrict(next: { [weak self] completeAndEntries, entry in
                 guard let strongSelf = self else {
                     return
                 }
@@ -1225,6 +1250,47 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
             }))
         }
         self.updateItems(size: size, transition: transition, stripTransition: transition)
+        
+        if let storyParams = self.storyParams {
+            var indicatorTransition = Transition(transition)
+            let expandedStorySetIndicator: ComponentView<Empty>
+            if let current = self.expandedStorySetIndicator {
+                expandedStorySetIndicator = current
+            } else {
+                indicatorTransition = .immediate
+                expandedStorySetIndicator = ComponentView()
+                self.expandedStorySetIndicator = expandedStorySetIndicator
+            }
+            
+            let expandedStorySetSize = expandedStorySetIndicator.update(
+                transition: indicatorTransition,
+                component: AnyComponent(StorySetIndicatorComponent(
+                    context: self.context,
+                    strings: self.context.sharedContext.currentPresentationData.with({ $0 }).strings,
+                    peer: storyParams.peer,
+                    items: storyParams.items,
+                    hasUnseen: storyParams.hasUnseen,
+                    hasUnseenPrivate: storyParams.hasUnseenPrivate,
+                    totalCount: storyParams.count,
+                    theme: defaultDarkPresentationTheme,
+                    action: { [weak self] in
+                        self?.openStories?()
+                    }
+                )),
+                environment: {},
+                containerSize: CGSize(width: 300.0, height: 100.0)
+            )
+            let expandedStorySetFrame = CGRect(origin: CGPoint(x: floor((size.width - expandedStorySetSize.width) * 0.5), y: 10.0), size: expandedStorySetSize)
+            if let expandedStorySetIndicatorView = expandedStorySetIndicator.view {
+                if expandedStorySetIndicatorView.superview == nil {
+                    self.stripContainerNode.view.addSubview(expandedStorySetIndicatorView)
+                }
+                indicatorTransition.setFrame(view: expandedStorySetIndicatorView, frame: expandedStorySetFrame)
+            }
+        } else if let expandedStorySetIndicator = self.expandedStorySetIndicator {
+            self.expandedStorySetIndicator = nil
+            expandedStorySetIndicator.view?.removeFromSuperview()
+        }
     }
     
     private func updateStrips(size: CGSize, itemsAdded: Bool, stripTransition: ContainedViewLayoutTransition) {
@@ -1256,7 +1322,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
             
             if let currentItemNode = self.currentItemNode {
                 self.positionDisposable.set((currentItemNode.mediaStatus
-                    |> deliverOnMainQueue).start(next: { [weak self] statusAndVideoStartTimestamp in
+                    |> deliverOnMainQueue).startStrict(next: { [weak self] statusAndVideoStartTimestamp in
                         if let strongSelf = self {
                             strongSelf.playerStatus = statusAndVideoStartTimestamp
                         }
@@ -1304,7 +1370,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
     public var updateCustomItemsOnlySynchronously = false
     
     private func updateItems(size: CGSize, update: Bool = false, transition: ContainedViewLayoutTransition, stripTransition: ContainedViewLayoutTransition, synchronous: Bool = false) {
-        var validIds: [MediaResourceId] = []
+        var validIds: [EngineMediaResource.Id] = []
         var addedItemNodesForAdditiveTransition: [PeerInfoAvatarListItemNode] = []
         var additiveTransitionOffset: CGFloat = 0.0
         var itemsAdded = false
@@ -1371,7 +1437,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
                 photoTitle = representation.hasVideo ? presentationData.strings.UserInfo_PublicVideo : presentationData.strings.UserInfo_PublicPhoto
                 hasLink = true
                 if let peer = self.peer {
-                    fallbackImageSignal = peerAvatarCompleteImage(account: self.context.account, peer: EnginePeer(peer), forceProvidedRepresentation: true, representation: representation, size: CGSize(width: 28.0, height: 28.0))
+                    fallbackImageSignal = peerAvatarCompleteImage(account: self.context.account, peer: peer, forceProvidedRepresentation: true, representation: representation, size: CGSize(width: 28.0, height: 28.0))
                 }
             }
                         
@@ -1379,7 +1445,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
                 transition.updateAlpha(node: self.setByYouNode, alpha: 0.7)
                 self.setByYouNode.attributedText = NSAttributedString(string: photoTitle, font: Font.regular(12.0), textColor: UIColor.white)
                 let setByYouSize = self.setByYouNode.updateLayout(size)
-                self.setByYouNode.frame = CGRect(origin: CGPoint(x: floorToScreenPixels((size.width - setByYouSize.width) / 2.0), y: 17.0), size: setByYouSize)
+                self.setByYouNode.frame = CGRect(origin: CGPoint(x: size.width - setByYouSize.width - 14.0, y: size.height - setByYouSize.height - 18.0), size: setByYouSize)
                 self.setByYouNode.isUserInteractionEnabled = hasLink
             } else {
                 transition.updateAlpha(node: self.setByYouNode, alpha: 0.0)
@@ -1389,7 +1455,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
             if let fallbackImageSignal = fallbackImageSignal {
                 self.setByYouImageNode.setSignal(fallbackImageSignal)
                 transition.updateAlpha(node: self.setByYouImageNode, alpha: 1.0)
-                self.setByYouImageNode.frame = CGRect(origin: CGPoint(x: self.setByYouNode.frame.minX - 32.0, y: 11.0), size: CGSize(width: 28.0, height: 28.0))
+                self.setByYouImageNode.frame = CGRect(origin: CGPoint(x: self.setByYouNode.frame.minX - 32.0, y: self.setByYouNode.frame.minY - 7.0), size: CGSize(width: 28.0, height: 28.0))
             } else {
                 transition.updateAlpha(node: self.setByYouImageNode, alpha: 0.0)
             }
@@ -1398,7 +1464,7 @@ public final class PeerInfoAvatarListContainerNode: ASDisplayNode {
         for itemNode in addedItemNodesForAdditiveTransition {
             transition.animatePositionAdditive(node: itemNode, offset: CGPoint(x: additiveTransitionOffset, y: 0.0))
         }
-        var removeIds: [MediaResourceId] = []
+        var removeIds: [EngineMediaResource.Id] = []
         for (id, _) in self.itemNodes {
             if !validIds.contains(id) {
                 removeIds.append(id)

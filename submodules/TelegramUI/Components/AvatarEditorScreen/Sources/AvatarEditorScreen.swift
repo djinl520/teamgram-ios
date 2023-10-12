@@ -23,6 +23,7 @@ import DrawingUI
 import SolidRoundedButtonComponent
 import AnimationCache
 import EmojiTextAttachmentView
+import MediaEditor
 
 enum AvatarBackground: Equatable {
     case gradient([UInt32])
@@ -685,8 +686,11 @@ final class AvatarEditorScreenComponent: Component {
                 customLayout: nil,
                 externalBackground: nil,
                 externalExpansionView: nil,
+                customContentView: nil,
                 useOpaqueTheme: true,
-                hideBackground: true
+                hideBackground: true,
+                stateContext: nil,
+                addImage: nil
             )
             
             data.stickers?.inputInteractionHolder.inputInteraction = EmojiPagerContentComponent.InputInteraction(
@@ -812,8 +816,11 @@ final class AvatarEditorScreenComponent: Component {
                 customLayout: nil,
                 externalBackground: nil,
                 externalExpansionView: nil,
+                customContentView: nil,
                 useOpaqueTheme: true,
-                hideBackground: true
+                hideBackground: true,
+                stateContext: nil,
+                addImage: nil
             )
             
             self.state?.updated(transition: .immediate)
@@ -1244,6 +1251,7 @@ final class AvatarEditorScreenComponent: Component {
                         externalBottomPanelContainer: nil,
                         displayTopPanelBackground: .blur,
                         topPanelExtensionUpdated: { _, _ in },
+                        topPanelScrollingOffset: { _, _ in },
                         hideInputUpdated: { _, _, _ in },
                         hideTopPanelUpdated: { [weak self] hideTopPanel, transition in
                             if let strongSelf = self {
@@ -1269,7 +1277,8 @@ final class AvatarEditorScreenComponent: Component {
                         inputHeight: 0.0,
                         displayBottomPanel: false,
                         isExpanded: true,
-                        clipContentToTopPanel: false
+                        clipContentToTopPanel: false,
+                        useExternalSearchContainer: false
                     )),
                     environment: {},
                     containerSize: CGSize(width: keyboardContainerFrame.size.width, height: keyboardContainerFrame.size.height - 6.0 + (isSearchActive ? 40.0 : 0.0))
@@ -1381,7 +1390,7 @@ final class AvatarEditorScreenComponent: Component {
                     try? backgroundImage.jpegData(compressionQuality: 0.8)?.write(to: tempUrl)
                     
                     let drawingSize = CGSize(width: 1920.0, height: 1920.0)
-                    let entity = DrawingStickerEntity(content: .file(file))
+                    let entity = DrawingStickerEntity(content: .file(file, .sticker))
                     entity.referenceDrawingSize = drawingSize
                     entity.position = CGPoint(x: drawingSize.width / 2.0, y: drawingSize.height / 2.0)
                     entity.scale = 3.3
@@ -1389,7 +1398,7 @@ final class AvatarEditorScreenComponent: Component {
                     var fileId: Int64 = 0
                     var stickerPackId: Int64 = 0
                     var stickerPackAccessHash: Int64 = 0
-                    if case let .file(file) = entity.content {
+                    if case let .file(file, _) = entity.content {
                         if file.isCustomEmoji {
                             fileId = file.fileId.id
                         } else if file.isAnimatedSticker {
@@ -1407,7 +1416,7 @@ final class AvatarEditorScreenComponent: Component {
                     
                     let colors: [NSNumber] = state.selectedBackground.colors.map { Int32(bitPattern: $0) as NSNumber }
                     
-                    let entitiesData = DrawingEntitiesView.encodeEntities([entity])
+                    let entitiesData = DrawingEntitiesView.encodeEntitiesData([entity])
                     
                     let paintingData = TGPaintingData(
                         drawing: nil,

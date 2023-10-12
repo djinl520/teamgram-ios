@@ -46,6 +46,9 @@ public enum ContextMenuActionItemTextColor {
 public enum ContextMenuActionResult {
     case `default`
     case dismissWithoutContent
+    /// Temporary
+    static var safeStreamRecordingDismissWithoutContent: ContextMenuActionResult { .dismissWithoutContent }
+    
     case custom(ContainedViewLayoutTransition)
 }
 
@@ -57,10 +60,14 @@ public enum ContextMenuActionItemFont {
 
 public struct ContextMenuActionItemIconSource {
     public let size: CGSize
+    public let contentMode: UIView.ContentMode
+    public let cornerRadius: CGFloat
     public let signal: Signal<UIImage?, NoError>
     
-    public init(size: CGSize, signal: Signal<UIImage?, NoError>) {
+    public init(size: CGSize, contentMode: UIView.ContentMode = .scaleToFill, cornerRadius: CGFloat = 0.0, signal: Signal<UIImage?, NoError>) {
         self.size = size
+        self.contentMode = contentMode
+        self.cornerRadius = cornerRadius
         self.signal = signal
     }
 }
@@ -75,13 +82,20 @@ public enum ContextMenuActionBadgeColor {
     case inactive
 }
 
-public struct ContextMenuActionBadge {
+public struct ContextMenuActionBadge: Equatable {
+    public enum Style {
+        case badge
+        case label
+    }
+    
     public var value: String
     public var color: ContextMenuActionBadgeColor
+    public var style: Style
     
-    public init(value: String, color: ContextMenuActionBadgeColor) {
+    public init(value: String, color: ContextMenuActionBadgeColor, style: Style = .badge) {
         self.value = value
         self.color = color
+        self.style = style
     }
 }
 
@@ -106,6 +120,7 @@ public final class ContextMenuActionItem {
     public let parseMarkdown: Bool
     public let badge: ContextMenuActionBadge?
     public let icon: (PresentationTheme) -> UIImage?
+    public let additionalLeftIcon: ((PresentationTheme) -> UIImage?)?
     public let iconSource: ContextMenuActionItemIconSource?
     public let iconPosition: ContextMenuActionItemIconPosition
     public let animationName: String?
@@ -122,6 +137,7 @@ public final class ContextMenuActionItem {
         parseMarkdown: Bool = false,
         badge: ContextMenuActionBadge? = nil,
         icon: @escaping (PresentationTheme) -> UIImage?,
+        additionalLeftIcon: ((PresentationTheme) -> UIImage?)? = nil,
         iconSource: ContextMenuActionItemIconSource? = nil,
         iconPosition: ContextMenuActionItemIconPosition = .right,
         animationName: String? = nil,
@@ -138,6 +154,7 @@ public final class ContextMenuActionItem {
             parseMarkdown: parseMarkdown,
             badge: badge,
             icon: icon,
+            additionalLeftIcon: additionalLeftIcon,
             iconSource: iconSource,
             iconPosition: iconPosition,
             animationName: animationName,
@@ -160,6 +177,7 @@ public final class ContextMenuActionItem {
         parseMarkdown: Bool = false,
         badge: ContextMenuActionBadge? = nil,
         icon: @escaping (PresentationTheme) -> UIImage?,
+        additionalLeftIcon: ((PresentationTheme) -> UIImage?)? = nil,
         iconSource: ContextMenuActionItemIconSource? = nil,
         iconPosition: ContextMenuActionItemIconPosition = .right,
         animationName: String? = nil,
@@ -175,6 +193,7 @@ public final class ContextMenuActionItem {
         self.parseMarkdown = parseMarkdown
         self.badge = badge
         self.icon = icon
+        self.additionalLeftIcon = additionalLeftIcon
         self.iconSource = iconSource
         self.iconPosition = iconPosition
         self.animationName = animationName
@@ -277,7 +296,6 @@ private final class ContextControllerNode: ViewControllerTracingNode, UIScrollVi
     }
     
     init(
-        account: Account,
         controller: ContextController,
         presentationData: PresentationData,
         source: ContextContentSource,
@@ -2446,7 +2464,6 @@ public final class ContextController: ViewController, StandalonePresentableContr
         }
     }
 
-    private let account: Account
     private var presentationData: PresentationData
     private let source: ContextContentSource
     private var items: Signal<ContextController.Items, NoError>
@@ -2501,8 +2518,7 @@ public final class ContextController: ViewController, StandalonePresentableContr
     
     public var getOverlayViews: (() -> [UIView])?
     
-    public init(account: Account, presentationData: PresentationData, source: ContextContentSource, items: Signal<ContextController.Items, NoError>, recognizer: TapLongTapOrDoubleTapGestureRecognizer? = nil, gesture: ContextGesture? = nil, workaroundUseLegacyImplementation: Bool = false) {
-        self.account = account
+    public init(presentationData: PresentationData, source: ContextContentSource, items: Signal<ContextController.Items, NoError>, recognizer: TapLongTapOrDoubleTapGestureRecognizer? = nil, gesture: ContextGesture? = nil, workaroundUseLegacyImplementation: Bool = false) {
         self.presentationData = presentationData
         self.source = source
         self.items = items
@@ -2524,7 +2540,7 @@ public final class ContextController: ViewController, StandalonePresentableContr
                         return
                     }
                     strongSelf.dismiss(result: .default, completion: {})
-                })
+                }).strict()
             case let .reference(referenceSource):
                 self.statusBar.statusBarStyle = .Ignore
                 
@@ -2536,7 +2552,7 @@ public final class ContextController: ViewController, StandalonePresentableContr
                         return
                     }
                     strongSelf.dismiss(result: .default, completion: {})
-                })
+                }).strict()
             case let .extracted(extractedSource):
                 if extractedSource.blurBackground {
                     self.statusBar.statusBarStyle = .Hide
@@ -2551,7 +2567,7 @@ public final class ContextController: ViewController, StandalonePresentableContr
                         return
                     }
                     strongSelf.dismiss(result: .default, completion: {})
-                })
+                }).strict()
             case .controller:
                 self.statusBar.statusBarStyle = .Hide
         }
@@ -2569,7 +2585,7 @@ public final class ContextController: ViewController, StandalonePresentableContr
     }
     
     override public func loadDisplayNode() {
-        self.displayNode = ContextControllerNode(account: self.account, controller: self, presentationData: self.presentationData, source: self.source, items: self.items, beginDismiss: { [weak self] result in
+        self.displayNode = ContextControllerNode(controller: self, presentationData: self.presentationData, source: self.source, items: self.items, beginDismiss: { [weak self] result in
             self?.dismiss(result: result, completion: nil)
         }, recognizer: self.recognizer, gesture: self.gesture, beganAnimatingOut: { [weak self] in
             guard let strongSelf = self else {

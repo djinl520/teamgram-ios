@@ -260,7 +260,7 @@ final class HorizontalListContextResultsChatInputPanelItemNode: ListViewItemNode
                     }
                     imageDimensions = externalReference.content?.dimensions?.cgSize
                     if externalReference.type == "gif", let thumbnailResource = externalReference.thumbnail?.resource, let content = externalReference.content, let dimensions = content.dimensions {
-                        videoFile = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: 0), partialReference: nil, resource: thumbnailResource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "video/mp4", size: nil, attributes: [.Animated, .Video(duration: 0, size: dimensions, flags: [])])
+                        videoFile = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: 0), partialReference: nil, resource: thumbnailResource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "video/mp4", size: nil, attributes: [.Animated, .Video(duration: 0, size: dimensions, flags: [], preloadSize: nil)])
                         imageResource = nil
                     }
                 
@@ -437,7 +437,7 @@ final class HorizontalListContextResultsChatInputPanelItemNode: ListViewItemNode
                             }
                             let dimensions = animatedStickerFile.dimensions ?? PixelDimensions(width: 512, height: 512)
                             let fittedDimensions = dimensions.cgSize.aspectFitted(CGSize(width: 160.0, height: 160.0))
-                            strongSelf.fetchDisposable.set(freeMediaFileResourceInteractiveFetched(account: item.context.account, userLocation: .other, fileReference: stickerPackFileReference(animatedStickerFile), resource: animatedStickerFile.resource).start())
+                            strongSelf.fetchDisposable.set(freeMediaFileResourceInteractiveFetched(account: item.context.account, userLocation: .other, fileReference: stickerPackFileReference(animatedStickerFile), resource: animatedStickerFile.resource).startStrict())
                             animationNode.setup(source: AnimatedStickerResourceSource(account: item.context.account, resource: animatedStickerFile.resource, isVideo: animatedStickerFile.isVideoSticker), width: Int(fittedDimensions.width), height: Int(fittedDimensions.height), playbackMode: .loop, mode: .cached)
                         }
                     }
@@ -451,7 +451,7 @@ final class HorizontalListContextResultsChatInputPanelItemNode: ListViewItemNode
                     strongSelf.statusNode.frame = progressFrame
 
                     if let updatedStatusSignal = updatedStatusSignal {
-                        strongSelf.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).start(next: { [weak strongSelf] status in
+                        strongSelf.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).startStrict(next: { [weak strongSelf] status in
                             displayLinkDispatcher.dispatch {
                                 if let strongSelf = strongSelf {
                                     strongSelf.resourceStatus = status

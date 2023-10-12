@@ -60,7 +60,7 @@ final class MessageMediaPlaylistItem: SharedMediaPlaylistItem {
         return MessageMediaPlaylistItemStableId(stableId: message.stableId)
     }
     
-    var playbackData: SharedMediaPlaybackData? {
+    lazy var playbackData: SharedMediaPlaybackData? = {
         if let file = extractFileMedia(self.message) {
             let fileReference = FileMediaReference.message(message: MessageReference(self.message), media: file)
             let source = SharedMediaPlaybackDataSource.telegramFile(reference: fileReference, isCopyProtected: self.message.isCopyProtected())
@@ -72,7 +72,7 @@ final class MessageMediaPlaylistItem: SharedMediaPlaylistItem {
                         } else {
                             return SharedMediaPlaybackData(type: .music, source: source)
                         }
-                    case let .Video(_, _, flags):
+                    case let .Video(_, _, flags, _):
                         if flags.contains(.instantRoundVideo) {
                             return SharedMediaPlaybackData(type: .instantVideo, source: source)
                         } else {
@@ -93,9 +93,9 @@ final class MessageMediaPlaylistItem: SharedMediaPlaylistItem {
             }
         }
         return nil
-    }
+    }()
 
-    var displayData: SharedMediaPlaybackDisplayData? {
+    lazy var displayData: SharedMediaPlaybackDisplayData? = {
         if let file = extractFileMedia(self.message) {
             let text = self.message.text
             var entities: [MessageTextEntity] = []
@@ -108,40 +108,42 @@ final class MessageMediaPlaylistItem: SharedMediaPlaylistItem {
                         
             for attribute in file.attributes {
                 switch attribute {
-                    case let .Audio(isVoice, duration, title, performer, _):
-                        if isVoice {
-                            return SharedMediaPlaybackDisplayData.voice(author: self.message.effectiveAuthor, peer: self.message.peers[self.message.id.peerId])
-                        } else {
-                            var updatedTitle = title
-                            let updatedPerformer = performer
-                            if (title ?? "").isEmpty && (performer ?? "").isEmpty {
-                                updatedTitle = file.fileName ?? ""
-                            }
-                            
-                            let albumArt: SharedMediaPlaybackAlbumArt?
-                            if file.fileName?.lowercased().hasSuffix(".ogg") == true {
-                                albumArt = nil
-                            } else {
-                                albumArt = SharedMediaPlaybackAlbumArt(thumbnailResource: ExternalMusicAlbumArtResource(file: .message(message: MessageReference(self.message), media: file), title: updatedTitle ?? "", performer: updatedPerformer ?? "", isThumbnail: true), fullSizeResource: ExternalMusicAlbumArtResource(file: .message(message: MessageReference(self.message), media: file), title: updatedTitle ?? "", performer: updatedPerformer ?? "", isThumbnail: false))
-                            }
-                            
-                            return SharedMediaPlaybackDisplayData.music(title: updatedTitle, performer: updatedPerformer, albumArt: albumArt, long: CGFloat(duration) > 10.0 * 60.0, caption: caption)
+                case let .Audio(isVoice, duration, title, performer, _):
+                    let displayData: SharedMediaPlaybackDisplayData
+                    if isVoice {
+                        displayData = SharedMediaPlaybackDisplayData.voice(author: self.message.effectiveAuthor.flatMap(EnginePeer.init), peer: self.message.peers[self.message.id.peerId].flatMap(EnginePeer.init))
+                    } else {
+                        var updatedTitle = title
+                        let updatedPerformer = performer
+                        if (title ?? "").isEmpty && (performer ?? "").isEmpty {
+                            updatedTitle = file.fileName ?? ""
                         }
-                    case let .Video(_, _, flags):
-                        if flags.contains(.instantRoundVideo) {
-                            return SharedMediaPlaybackDisplayData.instantVideo(author: self.message.effectiveAuthor, peer: self.message.peers[self.message.id.peerId], timestamp: self.message.timestamp)
+                        
+                        let albumArt: SharedMediaPlaybackAlbumArt?
+                        if file.fileName?.lowercased().hasSuffix(".ogg") == true {
+                            albumArt = nil
                         } else {
-                            return nil
+                            albumArt = SharedMediaPlaybackAlbumArt(thumbnailResource: ExternalMusicAlbumArtResource(file: .message(message: MessageReference(self.message), media: file), title: updatedTitle ?? "", performer: updatedPerformer ?? "", isThumbnail: true), fullSizeResource: ExternalMusicAlbumArtResource(file: .message(message: MessageReference(self.message), media: file), title: updatedTitle ?? "", performer: updatedPerformer ?? "", isThumbnail: false))
                         }
-                    default:
-                        break
+                        
+                        displayData = SharedMediaPlaybackDisplayData.music(title: updatedTitle, performer: updatedPerformer, albumArt: albumArt, long: CGFloat(duration) > 10.0 * 60.0, caption: caption)
+                    }
+                    return displayData
+                case let .Video(_, _, flags, _):
+                    if flags.contains(.instantRoundVideo) {
+                        return SharedMediaPlaybackDisplayData.instantVideo(author: self.message.effectiveAuthor.flatMap(EnginePeer.init), peer: self.message.peers[self.message.id.peerId].flatMap(EnginePeer.init), timestamp: self.message.timestamp)
+                    } else {
+                        return nil
+                    }
+                default:
+                    break
                 }
             }
             
             return SharedMediaPlaybackDisplayData.music(title: file.fileName ?? "", performer: self.message.effectiveAuthor?.debugDisplayTitle ?? "", albumArt: nil, long: false, caption: caption)
         }
         return nil
-    }
+    }()
 }
 
 private enum NavigatedMessageFromViewPosition {
@@ -515,7 +517,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                     }
                 }
                 |> take(1)
-                |> deliverOnMainQueue).start(next: { [weak self] _ in
+                |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
                     self?.currentItemDisappeared?()
                 }))
             } else {
@@ -557,7 +559,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                         }
                         |> take(1)
                         |> deliverOnMainQueue
-                        self.navigationDisposable.set(historySignal.start(next: { [weak self] messageAndAroundMessages in
+                        self.navigationDisposable.set(historySignal.startStrict(next: { [weak self] messageAndAroundMessages in
                             if let strongSelf = self {
                                 assert(strongSelf.loadingItem)
                                 
@@ -576,7 +578,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                     case let .custom(messages, at, _):
                         self.navigationDisposable.set((messages
                         |> take(1)
-                        |> deliverOnMainQueue).start(next: { [weak self] messages in
+                        |> deliverOnMainQueue).startStrict(next: { [weak self] messages in
                             if let strongSelf = self {
                                 assert(strongSelf.loadingItem)
                                 
@@ -600,7 +602,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                     default:
                         self.navigationDisposable.set((self.context.account.postbox.messageAtId(messageId)
                         |> take(1)
-                        |> deliverOnMainQueue).start(next: { [weak self] message in
+                        |> deliverOnMainQueue).startStrict(next: { [weak self] message in
                             if let strongSelf = self {
                                 assert(strongSelf.loadingItem)
                                 
@@ -710,7 +712,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                         }
                         |> take(1)
                         |> deliverOnMainQueue
-                        self.navigationDisposable.set(historySignal.start(next: { [weak self] messageAndAroundMessages in
+                        self.navigationDisposable.set(historySignal.startStrict(next: { [weak self] messageAndAroundMessages in
                             if let strongSelf = self {
                                 assert(strongSelf.loadingItem)
                                 
@@ -732,7 +734,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                     case .singleMessage:
                         self.navigationDisposable.set((self.context.account.postbox.messageAtId(index.id)
                         |> take(1)
-                        |> deliverOnMainQueue).start(next: { [weak self] message in
+                        |> deliverOnMainQueue).startStrict(next: { [weak self] message in
                             if let strongSelf = self {
                                 assert(strongSelf.loadingItem)
                                 
@@ -814,7 +816,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                         }
                         |> take(1)
                         |> deliverOnMainQueue
-                        self.navigationDisposable.set(historySignal.start(next: { [weak self] messageAndAroundMessages, previousMessagesCount, shouldLoadMore in
+                        self.navigationDisposable.set(historySignal.startStrict(next: { [weak self] messageAndAroundMessages, previousMessagesCount, shouldLoadMore in
                             if let strongSelf = self {
                                 assert(strongSelf.loadingItem)
                                 
@@ -826,7 +828,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                                     loadMore?()
                                     
                                     strongSelf.loadMoreDisposable.set((messages
-                                    |> deliverOnMainQueue).start(next: { messages, totalCount, hasMore in
+                                    |> deliverOnMainQueue).startStrict(next: { messages, totalCount, hasMore in
                                         guard let strongSelf = self else {
                                             return
                                         }
@@ -867,7 +869,7 @@ final class PeerMessagesMediaPlaylist: SharedMediaPlaylist {
                 default:
                     break
             }
-            let _ = self.context.engine.messages.markMessageContentAsConsumedInteractively(messageId: item.message.id).start()
+            let _ = self.context.engine.messages.markMessageContentAsConsumedInteractively(messageId: item.message.id).startStandalone()
         }
     }
 }

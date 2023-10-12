@@ -9,6 +9,10 @@ public extension LottieComponent {
     final class EmojiContent: LottieComponent.Content {
         private let context: AccountContext
         private let fileId: Int64
+        
+        override public var frameRange: Range<Double> {
+            return 0.0 ..< 1.0
+        }
 
         public init(
             context: AccountContext,
@@ -30,7 +34,7 @@ public extension LottieComponent {
             return true
         }
         
-        override public func load(_ f: @escaping (Data, String?) -> Void) -> Disposable {
+        override public func load(_ f: @escaping (LottieComponent.ContentData) -> Void) -> Disposable {
             let fileId = self.fileId
             let mediaBox = self.context.account.postbox.mediaBox
             return (self.context.engine.stickers.resolveInlineStickers(fileIds: [fileId])
@@ -60,7 +64,7 @@ public extension LottieComponent {
                 guard let data else {
                     return
                 }
-                f(data, nil)
+                f(.animation(data: data, cacheKey: nil))
             })
         }
     }

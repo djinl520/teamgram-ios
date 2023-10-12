@@ -240,7 +240,7 @@ func _internal_createForumChannelTopic(account: Account, peerId: PeerId, title: 
                 }
                 |> castError(CreateForumChannelTopicError.self)
                 |> mapToSignal { _ -> Signal<Int64, CreateForumChannelTopicError> in
-                    return resolveForumThreads(postbox: account.postbox, network: account.network, ids: [MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: topicId))])
+                    return resolveForumThreads(accountPeerId: account.peerId, postbox: account.postbox, network: account.network, ids: [MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: topicId))])
                     |> castError(CreateForumChannelTopicError.self)
                     |> map { _ -> Int64 in
                         return topicId
@@ -265,7 +265,7 @@ func _internal_fetchForumChannelTopic(account: Account, peerId: PeerId, threadId
         if let info = info {
             return .single(info)
         } else {
-            return resolveForumThreads(postbox: account.postbox, network: account.network, ids: [MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId))])
+            return resolveForumThreads(accountPeerId: account.peerId, postbox: account.postbox, network: account.network, ids: [MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId))])
             |> mapToSignal { _ -> Signal<EngineMessageHistoryThread.Info?, NoError> in
                 return account.postbox.transaction { transaction -> EngineMessageHistoryThread.Info?  in
                     if let data = transaction.getMessageHistoryThreadInfo(peerId: peerId, threadId: threadId)?.data.get(MessageHistoryThreadData.self) {
@@ -484,15 +484,15 @@ func _internal_setForumChannelPinnedTopics(account: Account, id: EnginePeer.Id, 
     }
 }
 
-func _internal_setChannelForumMode(account: Account, peerId: PeerId, isForum: Bool) -> Signal<Never, NoError> {
-    return account.postbox.transaction { transaction -> Api.InputChannel? in
+func _internal_setChannelForumMode(postbox: Postbox, network: Network, stateManager: AccountStateManager, peerId: PeerId, isForum: Bool) -> Signal<Never, NoError> {
+    return postbox.transaction { transaction -> Api.InputChannel? in
         return transaction.getPeer(peerId).flatMap(apiInputChannel)
     }
     |> mapToSignal { inputChannel -> Signal<Never, NoError> in
         guard let inputChannel = inputChannel else {
             return .complete()
         }
-        return account.network.request(Api.functions.channels.toggleForum(channel: inputChannel, enabled: isForum ? .boolTrue : .boolFalse))
+        return network.request(Api.functions.channels.toggleForum(channel: inputChannel, enabled: isForum ? .boolTrue : .boolFalse))
         |> map(Optional.init)
         |> `catch` { _ -> Signal<Api.Updates?, NoError> in
             return .single(nil)
@@ -501,7 +501,7 @@ func _internal_setChannelForumMode(account: Account, peerId: PeerId, isForum: Bo
             guard let result = result else {
                 return .complete()
             }
-            account.stateManager.addUpdates(result)
+            stateManager.addUpdates(result)
             
             return .complete()
         }
@@ -706,23 +706,8 @@ func _internal_requestMessageHistoryThreads(accountPeerId: PeerId, postbox: Post
 
 func applyLoadMessageHistoryThreadsResults(accountPeerId: PeerId, transaction: Transaction, results: [LoadMessageHistoryThreadsResult]) {
     for result in results {
-        var peers: [Peer] = []
-        var peerPresences: [PeerId: Api.User] = [:]
-        for chat in result.chats {
-            if let groupOrChannel = parseTelegramGroupOrChannel(chat: chat) {
-                peers.append(groupOrChannel)
-            }
-        }
-        for user in result.users {
-            let telegramUser = TelegramUser(user: user)
-            peers.append(telegramUser)
-            peerPresences[telegramUser.id] = user
-        }
-        updatePeers(transaction: transaction, peers: peers, update: { _, updated -> Peer in
-            return updated
-        })
-        
-        updatePeerPresences(transaction: transaction, accountPeerId: accountPeerId, peerPresences: peerPresences)
+        let parsedPeers = AccumulatedPeers(transaction: transaction, chats: result.chats, users: result.users)
+        updatePeers(transaction: transaction, accountPeerId: accountPeerId, peers: parsedPeers)
         
         let _ = InternalAccountState.addMessages(transaction: transaction, messages: result.messages, location: .Random)
         

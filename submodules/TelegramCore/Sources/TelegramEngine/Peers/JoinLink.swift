@@ -36,6 +36,9 @@ public enum ExternalJoiningChatState {
             public let isPublic: Bool
             public let isMegagroup: Bool
             public let requestNeeded: Bool
+            public let isVerified: Bool
+            public let isScam: Bool
+            public let isFake: Bool
         }
         
         public let flags: Flags
@@ -89,6 +92,7 @@ func _internal_joinChatInteractively(with hash: String, account: Account) -> Sig
 }
 
 func _internal_joinLinkInformation(_ hash: String, account: Account) -> Signal<ExternalJoiningChatState, JoinLinkInfoError> {
+    let accountPeerId = account.peerId
     return account.network.request(Api.functions.messages.checkChatInvite(hash: hash), automaticFloodWait: false)
     |> map(Optional.init)
     |> `catch` { error -> Signal<Api.ChatInvite?, JoinLinkInfoError> in
@@ -103,15 +107,13 @@ func _internal_joinLinkInformation(_ hash: String, account: Account) -> Signal<E
             switch result {
                 case let .chatInvite(flags, title, about, invitePhoto, participantsCount, participants):
                     let photo = telegramMediaImageFromApiPhoto(invitePhoto).flatMap({ smallestImageRepresentation($0.representations) })
-                    let flags: ExternalJoiningChatState.Invite.Flags = .init(isChannel: (flags & (1 << 0)) != 0, isBroadcast: (flags & (1 << 1)) != 0, isPublic: (flags & (1 << 2)) != 0, isMegagroup: (flags & (1 << 3)) != 0, requestNeeded: (flags & (1 << 6)) != 0)
+                    let flags: ExternalJoiningChatState.Invite.Flags = .init(isChannel: (flags & (1 << 0)) != 0, isBroadcast: (flags & (1 << 1)) != 0, isPublic: (flags & (1 << 2)) != 0, isMegagroup: (flags & (1 << 3)) != 0, requestNeeded: (flags & (1 << 6)) != 0, isVerified: (flags & (1 << 7)) != 0, isScam: (flags & (1 << 8)) != 0, isFake: (flags & (1 << 9)) != 0)
                     return .single(.invite(ExternalJoiningChatState.Invite(flags: flags, title: title, about: about, photoRepresentation: photo, participantsCount: participantsCount, participants: participants?.map({ EnginePeer(TelegramUser(user: $0)) }))))
                 case let .chatInviteAlready(chat):
                     if let peer = parseTelegramGroupOrChannel(chat: chat) {
                         return account.postbox.transaction({ (transaction) -> ExternalJoiningChatState in
-                            updatePeers(transaction: transaction, peers: [peer], update: { (previous, updated) -> Peer? in
-                                return updated
-                            })
-                            
+                            let parsedPeers = AccumulatedPeers(transaction: transaction, chats: [chat], users: [])
+                            updatePeers(transaction: transaction, accountPeerId: accountPeerId, peers: parsedPeers)
                             return .alreadyJoined(EnginePeer(peer))
                         })
                         |> castError(JoinLinkInfoError.self)
@@ -120,9 +122,8 @@ func _internal_joinLinkInformation(_ hash: String, account: Account) -> Signal<E
                 case let .chatInvitePeek(chat, expires):
                     if let peer = parseTelegramGroupOrChannel(chat: chat) {
                         return account.postbox.transaction({ (transaction) -> ExternalJoiningChatState in
-                            updatePeers(transaction: transaction, peers: [peer], update: { (previous, updated) -> Peer? in
-                                return updated
-                            })
+                            let parsedPeers = AccumulatedPeers(transaction: transaction, chats: [chat], users: [])
+                            updatePeers(transaction: transaction, accountPeerId: accountPeerId, peers: parsedPeers)
                             
                             return .peek(EnginePeer(peer), expires)
                         })

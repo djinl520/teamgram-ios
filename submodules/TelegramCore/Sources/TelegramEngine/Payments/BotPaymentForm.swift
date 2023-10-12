@@ -47,6 +47,7 @@ public struct BotPaymentInvoice : Equatable {
     
     public struct RecurrentInfo: Equatable {
         public var termsUrl: String
+        public var isRecurrent: Bool
     }
 
     public let isTest: Bool
@@ -54,7 +55,7 @@ public struct BotPaymentInvoice : Equatable {
     public let currency: String
     public let prices: [BotPaymentPrice]
     public let tip: Tip?
-    public let recurrentInfo: RecurrentInfo?
+    public let termsInfo: RecurrentInfo?
 }
 
 public struct BotPaymentNativeProvider : Equatable {
@@ -144,7 +145,7 @@ public enum BotPaymentFormRequestError {
 extension BotPaymentInvoice {
     init(apiInvoice: Api.Invoice) {
         switch apiInvoice {
-        case let .invoice(flags, currency, prices, maxTipAmount, suggestedTipAmounts, recurrentTermsUrl):
+        case let .invoice(flags, currency, prices, maxTipAmount, suggestedTipAmounts, termsUrl):
             var fields = BotPaymentInvoiceFields()
             if (flags & (1 << 1)) != 0 {
                 fields.insert(.name)
@@ -167,9 +168,10 @@ extension BotPaymentInvoice {
             if (flags & (1 << 7)) != 0 {
                 fields.insert(.emailAvailableToProvider)
             }
-            var recurrentInfo: BotPaymentInvoice.RecurrentInfo?
-            if let recurrentTermsUrl = recurrentTermsUrl {
-                recurrentInfo = BotPaymentInvoice.RecurrentInfo(termsUrl: recurrentTermsUrl)
+            let isRecurrent = (flags & (1 << 9)) != 0
+            var termsInfo: BotPaymentInvoice.RecurrentInfo?
+            if let termsUrl = termsUrl {
+                termsInfo = BotPaymentInvoice.RecurrentInfo(termsUrl: termsUrl, isRecurrent: isRecurrent)
             }
             var parsedTip: BotPaymentInvoice.Tip?
             if let maxTipAmount = maxTipAmount, let suggestedTipAmounts = suggestedTipAmounts {
@@ -180,7 +182,7 @@ extension BotPaymentInvoice {
                 case let .labeledPrice(label, amount):
                     return BotPaymentPrice(label: label, amount: amount)
                 }
-            }, tip: parsedTip, recurrentInfo: recurrentInfo)
+            }, tip: parsedTip, termsInfo: termsInfo)
         }
     }
 }
@@ -247,7 +249,7 @@ func _internal_fetchBotPaymentInvoice(postbox: Postbox, network: Network, source
     }
 }
 
-func _internal_fetchBotPaymentForm(postbox: Postbox, network: Network, source: BotPaymentInvoiceSource, themeParams: [String: Any]?) -> Signal<BotPaymentForm, BotPaymentFormRequestError> {
+func _internal_fetchBotPaymentForm(accountPeerId: PeerId, postbox: Postbox, network: Network, source: BotPaymentInvoiceSource, themeParams: [String: Any]?) -> Signal<BotPaymentForm, BotPaymentFormRequestError> {
     return postbox.transaction { transaction -> Api.InputInvoice? in
         switch source {
         case let .message(messageId):
@@ -286,14 +288,8 @@ func _internal_fetchBotPaymentForm(postbox: Postbox, network: Network, source: B
                         let _ = description
                         let _ = photo
                         
-                        var peers: [Peer] = []
-                        for user in apiUsers {
-                            let parsed = TelegramUser(user: user)
-                            peers.append(parsed)
-                        }
-                        updatePeers(transaction: transaction, peers: peers, update: { _, updated in
-                            return updated
-                        })
+                        let parsedPeers = AccumulatedPeers(users: apiUsers)
+                        updatePeers(transaction: transaction, accountPeerId: accountPeerId, peers: parsedPeers)
 
                         let parsedInvoice = BotPaymentInvoice(apiInvoice: invoice)
                         var parsedNativeProvider: BotPaymentNativeProvider?
@@ -577,6 +573,7 @@ public enum RequestBotPaymentReceiptError {
 }
 
 func _internal_requestBotPaymentReceipt(account: Account, messageId: MessageId) -> Signal<BotPaymentReceipt, RequestBotPaymentReceiptError> {
+    let accountPeerId = account.peerId
     return account.postbox.transaction { transaction -> Api.InputPeer? in
         return transaction.getPeer(messageId.peerId).flatMap(apiInputPeer)
     }
@@ -594,11 +591,8 @@ func _internal_requestBotPaymentReceipt(account: Account, messageId: MessageId) 
             return account.postbox.transaction { transaction -> BotPaymentReceipt in
                 switch result {
                 case let .paymentReceipt(_, _, botId, _, title, description, photo, invoice, info, shipping, tipAmount, currency, totalAmount, credentialsTitle, users):
-                    var peers: [Peer] = []
-                    for user in users {
-                        peers.append(TelegramUser(user: user))
-                    }
-                    updatePeers(transaction: transaction, peers: peers, update: { _, updated in return updated })
+                    let parsedPeers = AccumulatedPeers(transaction: transaction, chats: [], users: users)
+                    updatePeers(transaction: transaction, accountPeerId: accountPeerId, peers: parsedPeers)
 
                     let parsedInvoice = BotPaymentInvoice(apiInvoice: invoice)
                     let parsedInfo = info.flatMap(BotPaymentRequestedInfo.init)

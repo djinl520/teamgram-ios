@@ -18,6 +18,10 @@ public enum ConnectionStatus: Equatable {
     case online(proxyAddress: String?)
 }
 
+public func legacy_unarchiveDeprecated(data: Data) -> Any? {
+    return MTDeprecated.unarchiveDeprecated(with: data)
+}
+
 private struct MTProtoConnectionFlags: OptionSet {
     let rawValue: Int
     
@@ -434,8 +438,9 @@ public struct NetworkInitializationArguments {
     public let encryptionProvider: EncryptionProvider
     public let deviceModelName:String?
     public let useBetaFeatures: Bool
+    public let isICloudEnabled: Bool
     
-    public init(apiId: Int32, apiHash: String, languagesCategory: String, appVersion: String, voipMaxLayer: Int32, voipVersions: [CallSessionManagerImplementationVersion], appData: Signal<Data?, NoError>, autolockDeadine: Signal<Int32?, NoError>, encryptionProvider: EncryptionProvider, deviceModelName: String?, useBetaFeatures: Bool) {
+    public init(apiId: Int32, apiHash: String, languagesCategory: String, appVersion: String, voipMaxLayer: Int32, voipVersions: [CallSessionManagerImplementationVersion], appData: Signal<Data?, NoError>, autolockDeadine: Signal<Int32?, NoError>, encryptionProvider: EncryptionProvider, deviceModelName: String?, useBetaFeatures: Bool, isICloudEnabled: Bool) {
         self.apiId = apiId
         self.apiHash = apiHash
         self.languagesCategory = languagesCategory
@@ -447,6 +452,7 @@ public struct NetworkInitializationArguments {
         self.encryptionProvider = encryptionProvider
         self.deviceModelName = deviceModelName
         self.useBetaFeatures = useBetaFeatures
+        self.isICloudEnabled = isICloudEnabled
     }
 }
 #if os(iOS)
@@ -543,7 +549,7 @@ func initializedNetwork(accountId: AccountRecordId, arguments: NetworkInitializa
             context.keychain = keychain
             // var wrappedAdditionalSource: MTSignal?
             #if os(iOS)
-            if #available(iOS 10.0, *), !supplementary {
+            if #available(iOS 10.0, *), !supplementary, arguments.isICloudEnabled {
                 var cloudDataContextValue: CloudDataContext?
                 if let value = cloudDataContext.with({ $0 }) {
                     cloudDataContextValue = value
@@ -607,7 +613,9 @@ func initializedNetwork(accountId: AccountRecordId, arguments: NetworkInitializa
             mtProto.delegate = connectionStatusDelegate
             mtProto.add(requestService)
             
-            let network = Network(queue: queue, datacenterId: datacenterId, context: context, mtProto: mtProto, requestService: requestService, connectionStatusDelegate: connectionStatusDelegate, _connectionStatus: connectionStatus, basePath: basePath, appDataDisposable: appDataDisposable, encryptionProvider: arguments.encryptionProvider, useRequestTimeoutTimers: useRequestTimeoutTimers, useBetaFeatures: arguments.useBetaFeatures)
+            let useExperimentalFeatures = networkSettings?.useExperimentalDownload ?? false
+            
+            let network = Network(queue: queue, datacenterId: datacenterId, context: context, mtProto: mtProto, requestService: requestService, connectionStatusDelegate: connectionStatusDelegate, _connectionStatus: connectionStatus, basePath: basePath, appDataDisposable: appDataDisposable, encryptionProvider: arguments.encryptionProvider, useRequestTimeoutTimers: useRequestTimeoutTimers, useBetaFeatures: arguments.useBetaFeatures, useExperimentalFeatures: useExperimentalFeatures)
             appDataUpdatedImpl = { [weak network] data in
                 guard let data = data else {
                     return
@@ -739,6 +747,7 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
     private let connectionStatusDelegate: MTProtoConnectionStatusDelegate
     private let useRequestTimeoutTimers: Bool
     public let useBetaFeatures: Bool
+    public let useExperimentalFeatures: Bool
     
     private let appDataDisposable: Disposable
     
@@ -782,7 +791,7 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
         return "Network context: \(self.context)"
     }
     
-    fileprivate init(queue: Queue, datacenterId: Int, context: MTContext, mtProto: MTProto, requestService: MTRequestMessageService, connectionStatusDelegate: MTProtoConnectionStatusDelegate, _connectionStatus: Promise<ConnectionStatus>, basePath: String, appDataDisposable: Disposable, encryptionProvider: EncryptionProvider, useRequestTimeoutTimers: Bool, useBetaFeatures: Bool) {
+    fileprivate init(queue: Queue, datacenterId: Int, context: MTContext, mtProto: MTProto, requestService: MTRequestMessageService, connectionStatusDelegate: MTProtoConnectionStatusDelegate, _connectionStatus: Promise<ConnectionStatus>, basePath: String, appDataDisposable: Disposable, encryptionProvider: EncryptionProvider, useRequestTimeoutTimers: Bool, useBetaFeatures: Bool, useExperimentalFeatures: Bool) {
         self.encryptionProvider = encryptionProvider
         
         self.queue = queue
@@ -797,6 +806,7 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
         self.basePath = basePath
         self.useRequestTimeoutTimers = useRequestTimeoutTimers
         self.useBetaFeatures = useBetaFeatures
+        self.useExperimentalFeatures = useExperimentalFeatures
         
         super.init()
         
@@ -1124,21 +1134,38 @@ class Keychain: NSObject, MTKeychain {
             return
         }
         MTContext.perform(objCTry: {
-            let data = NSKeyedArchiver.archivedData(withRootObject: object)
-            self.set(group + ":" + aKey, data)
+            if let data = try? NSKeyedArchiver.archivedData(withRootObject: object, requiringSecureCoding: false) {
+                self.set(group + ":" + aKey, data)
+            }
         })
     }
     
-    func object(forKey aKey: String!, group: String!) -> Any! {
+    func dictionary(forKey aKey: String!, group: String!) -> [AnyHashable : Any]? {
         guard let aKey = aKey, let group = group else {
             return nil
         }
         if let data = self.get(group + ":" + aKey) {
-            var result: Any?
-            MTContext.perform(objCTry: {
-                result = NSKeyedUnarchiver.unarchiveObject(with: data as Data)
-            })
-            return result
+            var result: NSDictionary?
+            result = MTDeprecated.unarchiveDeprecated(with: data as Data) as? NSDictionary
+            if let result = result {
+                return result as? [AnyHashable : Any]
+            }
+            assertionFailure("Unexpected keychain entry type")
+        }
+        return nil
+    }
+    
+    func number(forKey aKey: String!, group: String!) -> NSNumber? {
+        guard let aKey = aKey, let group = group else {
+            return nil
+        }
+        if let data = self.get(group + ":" + aKey) {
+            var result: NSNumber?
+            result = MTDeprecated.unarchiveDeprecated(with: data as Data) as? NSNumber
+            if let result = result {
+                return result
+            }
+            assertionFailure("Unexpected keychain entry type")
         }
         return nil
     }

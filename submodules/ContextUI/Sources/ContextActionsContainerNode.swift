@@ -448,7 +448,9 @@ final class InnerTextSelectionTipContainerNode: ASDisplayNode {
         
         let textSelectionNode = TextSelectionNode(theme: TextSelectionTheme(selection: presentationData.theme.contextMenu.primaryColor.withAlphaComponent(0.15), knob: presentationData.theme.contextMenu.primaryColor, knobDiameter: 8.0), strings: presentationData.strings, textNode: self.textNode.textNode, updateIsActive: { _ in
         }, present: { _, _ in
-        }, rootNode: self, performAction: { _, _ in
+        }, rootNode: { [weak self] in
+            return self
+        }, performAction: { _, _ in
         })
         self.textSelectionNode = textSelectionNode
         
@@ -561,12 +563,12 @@ final class InnerTextSelectionTipContainerNode: ASDisplayNode {
         let textFont = Font.regular(floor(presentationData.listsFontSize.baseDisplaySize * 14.0 / 17.0))
         let boldTextFont = Font.bold(floor(presentationData.listsFontSize.baseDisplaySize * 14.0 / 17.0))
         let textColor = self.presentationData.theme.contextMenu.primaryColor
-        let accentColor = self.presentationData.theme.contextMenu.badgeFillColor
+        let linkColor = self.presentationData.theme.overallDarkAppearance ? UIColor(rgb: 0x64d2ff) : self.presentationData.theme.contextMenu.badgeFillColor
         
         let iconSize = self.iconNode.image?.size ?? CGSize(width: 16.0, height: 16.0)
-                
+        
         let text = self.text.replacingOccurrences(of: "#", with: "# ")
-        let attributedText = NSMutableAttributedString(attributedString: parseMarkdownIntoAttributedString(text, attributes: MarkdownAttributes(body: MarkdownAttributeSet(font: textFont, textColor: textColor), bold: MarkdownAttributeSet(font: boldTextFont, textColor: textColor), link: MarkdownAttributeSet(font: boldTextFont, textColor: accentColor), linkAttribute: { _ in
+        let attributedText = NSMutableAttributedString(attributedString: parseMarkdownIntoAttributedString(text, attributes: MarkdownAttributes(body: MarkdownAttributeSet(font: textFont, textColor: textColor), bold: MarkdownAttributeSet(font: boldTextFont, textColor: textColor), link: MarkdownAttributeSet(font: boldTextFont, textColor: linkColor), linkAttribute: { _ in
             return nil
         })))
         if let file = self.file {
@@ -802,7 +804,7 @@ final class ContextActionsContainerNode: ASDisplayNode {
                 
                 strongSelf.tip = tip
                 requestLayout()
-            })
+            }).strict()
         }
     }
     

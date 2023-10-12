@@ -1,4 +1,258 @@
 public extension Api {
+    enum MaskCoords: TypeConstructorDescription {
+        case maskCoords(n: Int32, x: Double, y: Double, zoom: Double)
+    
+    public func serialize(_ buffer: Buffer, _ boxed: Swift.Bool) {
+    switch self {
+                case .maskCoords(let n, let x, let y, let zoom):
+                    if boxed {
+                        buffer.appendInt32(-1361650766)
+                    }
+                    serializeInt32(n, buffer: buffer, boxed: false)
+                    serializeDouble(x, buffer: buffer, boxed: false)
+                    serializeDouble(y, buffer: buffer, boxed: false)
+                    serializeDouble(zoom, buffer: buffer, boxed: false)
+                    break
+    }
+    }
+    
+    public func descriptionFields() -> (String, [(String, Any)]) {
+        switch self {
+                case .maskCoords(let n, let x, let y, let zoom):
+                return ("maskCoords", [("n", n as Any), ("x", x as Any), ("y", y as Any), ("zoom", zoom as Any)])
+    }
+    }
+    
+        public static func parse_maskCoords(_ reader: BufferReader) -> MaskCoords? {
+            var _1: Int32?
+            _1 = reader.readInt32()
+            var _2: Double?
+            _2 = reader.readDouble()
+            var _3: Double?
+            _3 = reader.readDouble()
+            var _4: Double?
+            _4 = reader.readDouble()
+            let _c1 = _1 != nil
+            let _c2 = _2 != nil
+            let _c3 = _3 != nil
+            let _c4 = _4 != nil
+            if _c1 && _c2 && _c3 && _c4 {
+                return Api.MaskCoords.maskCoords(n: _1!, x: _2!, y: _3!, zoom: _4!)
+            }
+            else {
+                return nil
+            }
+        }
+    
+    }
+}
+public extension Api {
+    enum MediaArea: TypeConstructorDescription {
+        case inputMediaAreaVenue(coordinates: Api.MediaAreaCoordinates, queryId: Int64, resultId: String)
+        case mediaAreaGeoPoint(coordinates: Api.MediaAreaCoordinates, geo: Api.GeoPoint)
+        case mediaAreaSuggestedReaction(flags: Int32, coordinates: Api.MediaAreaCoordinates, reaction: Api.Reaction)
+        case mediaAreaVenue(coordinates: Api.MediaAreaCoordinates, geo: Api.GeoPoint, title: String, address: String, provider: String, venueId: String, venueType: String)
+    
+    public func serialize(_ buffer: Buffer, _ boxed: Swift.Bool) {
+    switch self {
+                case .inputMediaAreaVenue(let coordinates, let queryId, let resultId):
+                    if boxed {
+                        buffer.appendInt32(-1300094593)
+                    }
+                    coordinates.serialize(buffer, true)
+                    serializeInt64(queryId, buffer: buffer, boxed: false)
+                    serializeString(resultId, buffer: buffer, boxed: false)
+                    break
+                case .mediaAreaGeoPoint(let coordinates, let geo):
+                    if boxed {
+                        buffer.appendInt32(-544523486)
+                    }
+                    coordinates.serialize(buffer, true)
+                    geo.serialize(buffer, true)
+                    break
+                case .mediaAreaSuggestedReaction(let flags, let coordinates, let reaction):
+                    if boxed {
+                        buffer.appendInt32(340088945)
+                    }
+                    serializeInt32(flags, buffer: buffer, boxed: false)
+                    coordinates.serialize(buffer, true)
+                    reaction.serialize(buffer, true)
+                    break
+                case .mediaAreaVenue(let coordinates, let geo, let title, let address, let provider, let venueId, let venueType):
+                    if boxed {
+                        buffer.appendInt32(-1098720356)
+                    }
+                    coordinates.serialize(buffer, true)
+                    geo.serialize(buffer, true)
+                    serializeString(title, buffer: buffer, boxed: false)
+                    serializeString(address, buffer: buffer, boxed: false)
+                    serializeString(provider, buffer: buffer, boxed: false)
+                    serializeString(venueId, buffer: buffer, boxed: false)
+                    serializeString(venueType, buffer: buffer, boxed: false)
+                    break
+    }
+    }
+    
+    public func descriptionFields() -> (String, [(String, Any)]) {
+        switch self {
+                case .inputMediaAreaVenue(let coordinates, let queryId, let resultId):
+                return ("inputMediaAreaVenue", [("coordinates", coordinates as Any), ("queryId", queryId as Any), ("resultId", resultId as Any)])
+                case .mediaAreaGeoPoint(let coordinates, let geo):
+                return ("mediaAreaGeoPoint", [("coordinates", coordinates as Any), ("geo", geo as Any)])
+                case .mediaAreaSuggestedReaction(let flags, let coordinates, let reaction):
+                return ("mediaAreaSuggestedReaction", [("flags", flags as Any), ("coordinates", coordinates as Any), ("reaction", reaction as Any)])
+                case .mediaAreaVenue(let coordinates, let geo, let title, let address, let provider, let venueId, let venueType):
+                return ("mediaAreaVenue", [("coordinates", coordinates as Any), ("geo", geo as Any), ("title", title as Any), ("address", address as Any), ("provider", provider as Any), ("venueId", venueId as Any), ("venueType", venueType as Any)])
+    }
+    }
+    
+        public static func parse_inputMediaAreaVenue(_ reader: BufferReader) -> MediaArea? {
+            var _1: Api.MediaAreaCoordinates?
+            if let signature = reader.readInt32() {
+                _1 = Api.parse(reader, signature: signature) as? Api.MediaAreaCoordinates
+            }
+            var _2: Int64?
+            _2 = reader.readInt64()
+            var _3: String?
+            _3 = parseString(reader)
+            let _c1 = _1 != nil
+            let _c2 = _2 != nil
+            let _c3 = _3 != nil
+            if _c1 && _c2 && _c3 {
+                return Api.MediaArea.inputMediaAreaVenue(coordinates: _1!, queryId: _2!, resultId: _3!)
+            }
+            else {
+                return nil
+            }
+        }
+        public static func parse_mediaAreaGeoPoint(_ reader: BufferReader) -> MediaArea? {
+            var _1: Api.MediaAreaCoordinates?
+            if let signature = reader.readInt32() {
+                _1 = Api.parse(reader, signature: signature) as? Api.MediaAreaCoordinates
+            }
+            var _2: Api.GeoPoint?
+            if let signature = reader.readInt32() {
+                _2 = Api.parse(reader, signature: signature) as? Api.GeoPoint
+            }
+            let _c1 = _1 != nil
+            let _c2 = _2 != nil
+            if _c1 && _c2 {
+                return Api.MediaArea.mediaAreaGeoPoint(coordinates: _1!, geo: _2!)
+            }
+            else {
+                return nil
+            }
+        }
+        public static func parse_mediaAreaSuggestedReaction(_ reader: BufferReader) -> MediaArea? {
+            var _1: Int32?
+            _1 = reader.readInt32()
+            var _2: Api.MediaAreaCoordinates?
+            if let signature = reader.readInt32() {
+                _2 = Api.parse(reader, signature: signature) as? Api.MediaAreaCoordinates
+            }
+            var _3: Api.Reaction?
+            if let signature = reader.readInt32() {
+                _3 = Api.parse(reader, signature: signature) as? Api.Reaction
+            }
+            let _c1 = _1 != nil
+            let _c2 = _2 != nil
+            let _c3 = _3 != nil
+            if _c1 && _c2 && _c3 {
+                return Api.MediaArea.mediaAreaSuggestedReaction(flags: _1!, coordinates: _2!, reaction: _3!)
+            }
+            else {
+                return nil
+            }
+        }
+        public static func parse_mediaAreaVenue(_ reader: BufferReader) -> MediaArea? {
+            var _1: Api.MediaAreaCoordinates?
+            if let signature = reader.readInt32() {
+                _1 = Api.parse(reader, signature: signature) as? Api.MediaAreaCoordinates
+            }
+            var _2: Api.GeoPoint?
+            if let signature = reader.readInt32() {
+                _2 = Api.parse(reader, signature: signature) as? Api.GeoPoint
+            }
+            var _3: String?
+            _3 = parseString(reader)
+            var _4: String?
+            _4 = parseString(reader)
+            var _5: String?
+            _5 = parseString(reader)
+            var _6: String?
+            _6 = parseString(reader)
+            var _7: String?
+            _7 = parseString(reader)
+            let _c1 = _1 != nil
+            let _c2 = _2 != nil
+            let _c3 = _3 != nil
+            let _c4 = _4 != nil
+            let _c5 = _5 != nil
+            let _c6 = _6 != nil
+            let _c7 = _7 != nil
+            if _c1 && _c2 && _c3 && _c4 && _c5 && _c6 && _c7 {
+                return Api.MediaArea.mediaAreaVenue(coordinates: _1!, geo: _2!, title: _3!, address: _4!, provider: _5!, venueId: _6!, venueType: _7!)
+            }
+            else {
+                return nil
+            }
+        }
+    
+    }
+}
+public extension Api {
+    enum MediaAreaCoordinates: TypeConstructorDescription {
+        case mediaAreaCoordinates(x: Double, y: Double, w: Double, h: Double, rotation: Double)
+    
+    public func serialize(_ buffer: Buffer, _ boxed: Swift.Bool) {
+    switch self {
+                case .mediaAreaCoordinates(let x, let y, let w, let h, let rotation):
+                    if boxed {
+                        buffer.appendInt32(64088654)
+                    }
+                    serializeDouble(x, buffer: buffer, boxed: false)
+                    serializeDouble(y, buffer: buffer, boxed: false)
+                    serializeDouble(w, buffer: buffer, boxed: false)
+                    serializeDouble(h, buffer: buffer, boxed: false)
+                    serializeDouble(rotation, buffer: buffer, boxed: false)
+                    break
+    }
+    }
+    
+    public func descriptionFields() -> (String, [(String, Any)]) {
+        switch self {
+                case .mediaAreaCoordinates(let x, let y, let w, let h, let rotation):
+                return ("mediaAreaCoordinates", [("x", x as Any), ("y", y as Any), ("w", w as Any), ("h", h as Any), ("rotation", rotation as Any)])
+    }
+    }
+    
+        public static func parse_mediaAreaCoordinates(_ reader: BufferReader) -> MediaAreaCoordinates? {
+            var _1: Double?
+            _1 = reader.readDouble()
+            var _2: Double?
+            _2 = reader.readDouble()
+            var _3: Double?
+            _3 = reader.readDouble()
+            var _4: Double?
+            _4 = reader.readDouble()
+            var _5: Double?
+            _5 = reader.readDouble()
+            let _c1 = _1 != nil
+            let _c2 = _2 != nil
+            let _c3 = _3 != nil
+            let _c4 = _4 != nil
+            let _c5 = _5 != nil
+            if _c1 && _c2 && _c3 && _c4 && _c5 {
+                return Api.MediaAreaCoordinates.mediaAreaCoordinates(x: _1!, y: _2!, w: _3!, h: _4!, rotation: _5!)
+            }
+            else {
+                return nil
+            }
+        }
+    
+    }
+}
+public extension Api {
     indirect enum Message: TypeConstructorDescription {
         case message(flags: Int32, id: Int32, fromId: Api.Peer?, peerId: Api.Peer, fwdFrom: Api.MessageFwdHeader?, viaBotId: Int64?, replyTo: Api.MessageReplyHeader?, date: Int32, message: String, media: Api.MessageMedia?, replyMarkup: Api.ReplyMarkup?, entities: [Api.MessageEntity]?, views: Int32?, forwards: Int32?, replies: Api.MessageReplies?, editDate: Int32?, postAuthor: String?, groupedId: Int64?, reactions: Api.MessageReactions?, restrictionReason: [Api.RestrictionReason]?, ttlPeriod: Int32?)
         case messageEmpty(flags: Int32, id: Int32, peerId: Api.Peer?)
@@ -247,7 +501,7 @@ public extension Api {
         case messageActionEmpty
         case messageActionGameScore(gameId: Int64, score: Int32)
         case messageActionGeoProximityReached(fromId: Api.Peer, toId: Api.Peer, distance: Int32)
-        case messageActionGiftPremium(currency: String, amount: Int64, months: Int32)
+        case messageActionGiftPremium(flags: Int32, currency: String, amount: Int64, months: Int32, cryptoCurrency: String?, cryptoAmount: Int64?)
         case messageActionGroupCall(flags: Int32, call: Api.InputGroupCall, duration: Int32?)
         case messageActionGroupCallScheduled(call: Api.InputGroupCall, scheduleDate: Int32)
         case messageActionHistoryClear
@@ -261,7 +515,9 @@ public extension Api {
         case messageActionSecureValuesSent(types: [Api.SecureValueType])
         case messageActionSecureValuesSentMe(values: [Api.SecureValue], credentials: Api.SecureCredentialsEncrypted)
         case messageActionSetChatTheme(emoticon: String)
+        case messageActionSetChatWallPaper(wallpaper: Api.WallPaper)
         case messageActionSetMessagesTTL(flags: Int32, period: Int32, autoSettingFrom: Int64?)
+        case messageActionSetSameChatWallPaper(wallpaper: Api.WallPaper)
         case messageActionSuggestProfilePhoto(photo: Api.Photo)
         case messageActionTopicCreate(flags: Int32, title: String, iconColor: Int32, iconEmojiId: Int64?)
         case messageActionTopicEdit(flags: Int32, title: String?, iconEmojiId: Int64?, closed: Api.Bool?, hidden: Api.Bool?)
@@ -387,13 +643,16 @@ public extension Api {
                     toId.serialize(buffer, true)
                     serializeInt32(distance, buffer: buffer, boxed: false)
                     break
-                case .messageActionGiftPremium(let currency, let amount, let months):
+                case .messageActionGiftPremium(let flags, let currency, let amount, let months, let cryptoCurrency, let cryptoAmount):
                     if boxed {
-                        buffer.appendInt32(-1415514682)
+                        buffer.appendInt32(-935499028)
                     }
+                    serializeInt32(flags, buffer: buffer, boxed: false)
                     serializeString(currency, buffer: buffer, boxed: false)
                     serializeInt64(amount, buffer: buffer, boxed: false)
                     serializeInt32(months, buffer: buffer, boxed: false)
+                    if Int(flags) & Int(1 << 0) != 0 {serializeString(cryptoCurrency!, buffer: buffer, boxed: false)}
+                    if Int(flags) & Int(1 << 0) != 0 {serializeInt64(cryptoAmount!, buffer: buffer, boxed: false)}
                     break
                 case .messageActionGroupCall(let flags, let call, let duration):
                     if boxed {
@@ -503,6 +762,12 @@ public extension Api {
                     }
                     serializeString(emoticon, buffer: buffer, boxed: false)
                     break
+                case .messageActionSetChatWallPaper(let wallpaper):
+                    if boxed {
+                        buffer.appendInt32(-1136350937)
+                    }
+                    wallpaper.serialize(buffer, true)
+                    break
                 case .messageActionSetMessagesTTL(let flags, let period, let autoSettingFrom):
                     if boxed {
                         buffer.appendInt32(1007897979)
@@ -510,6 +775,12 @@ public extension Api {
                     serializeInt32(flags, buffer: buffer, boxed: false)
                     serializeInt32(period, buffer: buffer, boxed: false)
                     if Int(flags) & Int(1 << 0) != 0 {serializeInt64(autoSettingFrom!, buffer: buffer, boxed: false)}
+                    break
+                case .messageActionSetSameChatWallPaper(let wallpaper):
+                    if boxed {
+                        buffer.appendInt32(-1065845395)
+                    }
+                    wallpaper.serialize(buffer, true)
                     break
                 case .messageActionSuggestProfilePhoto(let photo):
                     if boxed {
@@ -588,8 +859,8 @@ public extension Api {
                 return ("messageActionGameScore", [("gameId", gameId as Any), ("score", score as Any)])
                 case .messageActionGeoProximityReached(let fromId, let toId, let distance):
                 return ("messageActionGeoProximityReached", [("fromId", fromId as Any), ("toId", toId as Any), ("distance", distance as Any)])
-                case .messageActionGiftPremium(let currency, let amount, let months):
-                return ("messageActionGiftPremium", [("currency", currency as Any), ("amount", amount as Any), ("months", months as Any)])
+                case .messageActionGiftPremium(let flags, let currency, let amount, let months, let cryptoCurrency, let cryptoAmount):
+                return ("messageActionGiftPremium", [("flags", flags as Any), ("currency", currency as Any), ("amount", amount as Any), ("months", months as Any), ("cryptoCurrency", cryptoCurrency as Any), ("cryptoAmount", cryptoAmount as Any)])
                 case .messageActionGroupCall(let flags, let call, let duration):
                 return ("messageActionGroupCall", [("flags", flags as Any), ("call", call as Any), ("duration", duration as Any)])
                 case .messageActionGroupCallScheduled(let call, let scheduleDate):
@@ -616,8 +887,12 @@ public extension Api {
                 return ("messageActionSecureValuesSentMe", [("values", values as Any), ("credentials", credentials as Any)])
                 case .messageActionSetChatTheme(let emoticon):
                 return ("messageActionSetChatTheme", [("emoticon", emoticon as Any)])
+                case .messageActionSetChatWallPaper(let wallpaper):
+                return ("messageActionSetChatWallPaper", [("wallpaper", wallpaper as Any)])
                 case .messageActionSetMessagesTTL(let flags, let period, let autoSettingFrom):
                 return ("messageActionSetMessagesTTL", [("flags", flags as Any), ("period", period as Any), ("autoSettingFrom", autoSettingFrom as Any)])
+                case .messageActionSetSameChatWallPaper(let wallpaper):
+                return ("messageActionSetSameChatWallPaper", [("wallpaper", wallpaper as Any)])
                 case .messageActionSuggestProfilePhoto(let photo):
                 return ("messageActionSuggestProfilePhoto", [("photo", photo as Any)])
                 case .messageActionTopicCreate(let flags, let title, let iconColor, let iconEmojiId):
@@ -820,17 +1095,26 @@ public extension Api {
             }
         }
         public static func parse_messageActionGiftPremium(_ reader: BufferReader) -> MessageAction? {
-            var _1: String?
-            _1 = parseString(reader)
-            var _2: Int64?
-            _2 = reader.readInt64()
-            var _3: Int32?
-            _3 = reader.readInt32()
+            var _1: Int32?
+            _1 = reader.readInt32()
+            var _2: String?
+            _2 = parseString(reader)
+            var _3: Int64?
+            _3 = reader.readInt64()
+            var _4: Int32?
+            _4 = reader.readInt32()
+            var _5: String?
+            if Int(_1!) & Int(1 << 0) != 0 {_5 = parseString(reader) }
+            var _6: Int64?
+            if Int(_1!) & Int(1 << 0) != 0 {_6 = reader.readInt64() }
             let _c1 = _1 != nil
             let _c2 = _2 != nil
             let _c3 = _3 != nil
-            if _c1 && _c2 && _c3 {
-                return Api.MessageAction.messageActionGiftPremium(currency: _1!, amount: _2!, months: _3!)
+            let _c4 = _4 != nil
+            let _c5 = (Int(_1!) & Int(1 << 0) == 0) || _5 != nil
+            let _c6 = (Int(_1!) & Int(1 << 0) == 0) || _6 != nil
+            if _c1 && _c2 && _c3 && _c4 && _c5 && _c6 {
+                return Api.MessageAction.messageActionGiftPremium(flags: _1!, currency: _2!, amount: _3!, months: _4!, cryptoCurrency: _5, cryptoAmount: _6)
             }
             else {
                 return nil
@@ -1031,6 +1315,19 @@ public extension Api {
                 return nil
             }
         }
+        public static func parse_messageActionSetChatWallPaper(_ reader: BufferReader) -> MessageAction? {
+            var _1: Api.WallPaper?
+            if let signature = reader.readInt32() {
+                _1 = Api.parse(reader, signature: signature) as? Api.WallPaper
+            }
+            let _c1 = _1 != nil
+            if _c1 {
+                return Api.MessageAction.messageActionSetChatWallPaper(wallpaper: _1!)
+            }
+            else {
+                return nil
+            }
+        }
         public static func parse_messageActionSetMessagesTTL(_ reader: BufferReader) -> MessageAction? {
             var _1: Int32?
             _1 = reader.readInt32()
@@ -1043,6 +1340,19 @@ public extension Api {
             let _c3 = (Int(_1!) & Int(1 << 0) == 0) || _3 != nil
             if _c1 && _c2 && _c3 {
                 return Api.MessageAction.messageActionSetMessagesTTL(flags: _1!, period: _2!, autoSettingFrom: _3)
+            }
+            else {
+                return nil
+            }
+        }
+        public static func parse_messageActionSetSameChatWallPaper(_ reader: BufferReader) -> MessageAction? {
+            var _1: Api.WallPaper?
+            if let signature = reader.readInt32() {
+                _1 = Api.parse(reader, signature: signature) as? Api.WallPaper
+            }
+            let _c1 = _1 != nil
+            if _c1 {
+                return Api.MessageAction.messageActionSetSameChatWallPaper(wallpaper: _1!)
             }
             else {
                 return nil

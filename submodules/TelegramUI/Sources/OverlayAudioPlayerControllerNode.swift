@@ -93,11 +93,11 @@ final class OverlayAudioPlayerControllerNode: ViewControllerTracingNode, UIGestu
         }, sendEmoji: { _, _, _ in
         }, sendGif: { _, _, _, _, _ in
             return false
-        }, sendBotContextResultAsGif: { _, _, _, _, _ in
+        }, sendBotContextResultAsGif: { _, _, _, _, _, _ in
             return false
         }, requestMessageActionCallback: { _, _, _, _ in
         }, requestMessageActionUrlAuth: { _, _ in
-        }, activateSwitchInline: { _, _ in
+        }, activateSwitchInline: { _, _, _ in
         }, openUrl: { _, _, _, _ in
         }, shareCurrentLocation: {
         }, shareAccountContact: {
@@ -165,10 +165,12 @@ final class OverlayAudioPlayerControllerNode: ViewControllerTracingNode, UIGestu
         }, openWebView: { _, _, _, _ in
         }, activateAdAction: { _ in
         }, openRequestedPeerSelection: { _, _, _ in
+        }, saveMediaToFiles: { _ in
         }, requestMessageUpdate: { _, _ in
         }, cancelInteractiveKeyboardGestures: {
         }, dismissTextInput: {
         }, scrollToMessageId: { _ in
+        }, navigateToStory: { _, _ in
         }, automaticMediaDownloadSettings: MediaAutoDownloadSettings.defaultSettings, pollActionState: ChatInterfacePollActionState(), stickerSettings: ChatInterfaceStickerSettings(), presentationContext: ChatPresentationContext(context: context, backgroundNode: nil))
         
         self.dimNode = ASDisplayNode()
@@ -295,12 +297,12 @@ final class OverlayAudioPlayerControllerNode: ViewControllerTracingNode, UIGestu
                 if let location = strongSelf.playlistLocation as? PeerMessagesPlaylistLocation, case let .custom(messages, _, loadMore) = location {
                     playlistLocation = .custom(messages: messages, at: id, loadMore: loadMore)
                 }
-                return strongSelf.context.sharedContext.openChatMessage(OpenChatMessageParams(context: strongSelf.context, chatLocation: nil, chatLocationContextHolder: nil, message: message, standalone: false, reverseMessageGalleryOrder: false, navigationController: nil, dismissInput: { }, present: { _, _ in }, transitionNode: { _, _ in return nil }, addToTransitionSurface: { _ in }, openUrl: { _ in }, openPeer: { _, _ in }, callPeer: { _, _ in }, enqueueMessage: { _ in }, sendSticker: nil, sendEmoji: nil, setupTemporaryHiddenMedia: { _, _, _ in }, chatAvatarHiddenMedia: { _, _ in }, playlistLocation: playlistLocation))
+                return strongSelf.context.sharedContext.openChatMessage(OpenChatMessageParams(context: strongSelf.context, chatLocation: nil, chatLocationContextHolder: nil, message: message, standalone: false, reverseMessageGalleryOrder: false, navigationController: nil, dismissInput: { }, present: { _, _ in }, transitionNode: { _, _, _ in return nil }, addToTransitionSurface: { _ in }, openUrl: { _ in }, openPeer: { _, _ in }, callPeer: { _, _ in }, enqueueMessage: { _ in }, sendSticker: nil, sendEmoji: nil, setupTemporaryHiddenMedia: { _, _, _ in }, chatAvatarHiddenMedia: { _, _ in }, playlistLocation: playlistLocation))
             }
             return false
         }
         
-        self.presentationDataDisposable = context.sharedContext.presentationData.start(next: { [weak self] presentationData in
+        self.presentationDataDisposable = context.sharedContext.presentationData.startStrict(next: { [weak self] presentationData in
             if let strongSelf = self {
                 if strongSelf.presentationData.theme !== presentationData.theme || strongSelf.presentationData.strings !== presentationData.strings {
                     strongSelf.updatePresentationData(presentationData)
@@ -581,7 +583,7 @@ final class OverlayAudioPlayerControllerNode: ViewControllerTracingNode, UIGestu
             let updateSizeAndInsets = ListViewUpdateSizeAndInsets(size: listNodeSize, insets: insets, duration: 0.0, curve: .Default(duration: nil))
             historyNode.updateLayout(transition: .immediate, updateSizeAndInsets: updateSizeAndInsets)
         }
-        self.replacementHistoryNodeReadyDisposable.set((historyNode.historyState.get() |> take(1) |> deliverOnMainQueue).start(next: { [weak self] _ in
+        self.replacementHistoryNodeReadyDisposable.set((historyNode.historyState.get() |> take(1) |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
             if let strongSelf = self {
                 strongSelf.replaceWithReadyUpdatedHistoryNode()
             }

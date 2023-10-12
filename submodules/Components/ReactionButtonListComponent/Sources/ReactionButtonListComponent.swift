@@ -3,7 +3,6 @@ import AsyncDisplayKit
 import Display
 import ComponentFlow
 import SwiftSignalKit
-import Postbox
 import TelegramCore
 import AccountContext
 import TelegramPresentationData
@@ -94,7 +93,7 @@ public final class ReactionIconView: PortalSourceView {
                     }
                     strongSelf.file = files[fileId]
                     strongSelf.reloadFile()
-                })
+                }).strict()
             }
         }
         

@@ -12,6 +12,7 @@ import LocalizedPeerData
 import ItemListUI
 import ChatPresentationInterfaceState
 import ChatControllerInteraction
+import ChatContextQuery
 
 private struct MentionChatInputContextPanelEntry: Comparable, Identifiable {
     let index: Int
@@ -165,7 +166,7 @@ final class MentionChatInputContextPanelNode: ChatInputContextPanelNode {
             }
         }, removeRequested: { [weak self] peerId in
             if let strongSelf = self {
-                let _ = strongSelf.context.engine.peers.removeRecentlyUsedInlineBot(peerId: peerId).start()
+                let _ = strongSelf.context.engine.peers.removeRecentlyUsedInlineBot(peerId: peerId).startStandalone()
                 
                 strongSelf.revealedPeerId = nil
                 strongSelf.currentResults = strongSelf.currentResults.filter { $0.id != peerId }

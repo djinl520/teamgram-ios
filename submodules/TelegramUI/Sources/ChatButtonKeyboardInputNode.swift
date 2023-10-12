@@ -391,7 +391,7 @@ final class ChatButtonKeyboardInputNode: ChatInputNode {
                     if let message = self.message {
                         self.controllerInteraction.requestMessageActionCallback(message.id, data, false, requiresPassword)
                     }
-                case let .switchInline(samePeer, query):
+                case let .switchInline(samePeer, query, _):
                     if let message = message {
                         var botPeer: Peer?
                         
@@ -426,7 +426,7 @@ final class ChatButtonKeyboardInputNode: ChatInputNode {
                     self.controllerInteraction.openPollCreation(isQuiz)
                 case let .openUserProfile(peerId):
                     let _ = (self.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
-                    |> deliverOnMainQueue).start(next: { [weak self] peer in
+                    |> deliverOnMainQueue).startStandalone(next: { [weak self] peer in
                         guard let self, let peer else {
                             return
                         }

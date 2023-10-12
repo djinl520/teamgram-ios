@@ -120,6 +120,7 @@ final class ChatRecentActionsController: TelegramBaseController {
         }, beginCall: { _ in
         }, toggleMessageStickerStarred: { _ in
         }, presentController: { _, _ in
+        }, presentControllerInCurrent: { _, _ in
         }, getNavigationController: {
             return nil
         }, presentGlobalOverlayController: { _, _ in
@@ -191,7 +192,7 @@ final class ChatRecentActionsController: TelegramBaseController {
         }
         |> distinctUntilChanged
         
-        self.presentationDataDisposable = combineLatest(queue: Queue.mainQueue(), context.sharedContext.presentationData, context.engine.themes.getChatThemes(accountManager: context.sharedContext.accountManager, onlyCached: true), themeEmoticon).start(next: { [weak self] presentationData, chatThemes, themeEmoticon in
+        self.presentationDataDisposable = combineLatest(queue: Queue.mainQueue(), context.sharedContext.presentationData, context.engine.themes.getChatThemes(accountManager: context.sharedContext.accountManager, onlyCached: true), themeEmoticon).startStrict(next: { [weak self] presentationData, chatThemes, themeEmoticon in
             if let strongSelf = self {
                 let previousTheme = strongSelf.presentationData.theme
                 let previousStrings = strongSelf.presentationData.strings

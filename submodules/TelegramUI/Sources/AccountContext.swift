@@ -16,12 +16,12 @@ import TelegramCallsUI
 import TelegramBaseController
 import AsyncDisplayKit
 import PresentationDataUtils
-import MeshAnimationCache
 import FetchManagerImpl
 import InAppPurchaseManager
 import AnimationCache
 import MultiAnimationRenderer
 import AppBundle
+import DirectMediaImageCache
 
 private final class DeviceSpecificContactImportContext {
     let disposable = MetaDisposable()
@@ -168,7 +168,6 @@ public final class AccountContextImpl: AccountContext {
     private var experimentalUISettingsDisposable: Disposable?
     
     public let cachedGroupCallContexts: AccountGroupCallContextCache
-    public let meshAnimationCache: MeshAnimationCache
     
     public let animationCache: AnimationCache
     public let animationRenderer: MultiAnimationRenderer
@@ -245,13 +244,20 @@ public final class AccountContextImpl: AccountContext {
     private var userLimitsConfigurationDisposable: Disposable?
     public private(set) var userLimits: EngineConfiguration.UserLimits
     
+    public private(set) var isPremium: Bool
+    
+    public let imageCache: AnyObject?
+    
     public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, temp: Bool = false)
     {
         self.sharedContextImpl = sharedContext
         self.account = account
         self.engine = TelegramEngine(account: account)
         
+        self.imageCache = DirectMediaImageCache(account: account)
+        
         self.userLimits = EngineConfiguration.UserLimits(UserLimitsConfiguration.defaultValue)
+        self.isPremium = false
         
         self.downloadedMediaStoreManager = DownloadedMediaStoreManagerImpl(postbox: account.postbox, accountManager: sharedContext.accountManager)
         
@@ -281,7 +287,6 @@ public final class AccountContextImpl: AccountContext {
         }
         
         self.cachedGroupCallContexts = AccountGroupCallContextCacheImpl()
-        self.meshAnimationCache = MeshAnimationCache(mediaBox: account.postbox.mediaBox)
         
         let cacheStorageBox = self.account.postbox.mediaBox.cacheStorageBox
         self.animationCache = AnimationCacheImpl(basePath: self.account.postbox.mediaBox.basePath + "/animation-cache", allocateTempFile: {
@@ -328,11 +333,13 @@ public final class AccountContextImpl: AccountContext {
         })
         
         self.currentCountriesConfiguration = Atomic(value: CountriesConfiguration(countries: loadCountryCodes()))
-        let currentCountriesConfiguration = self.currentCountriesConfiguration
-        self.countriesConfigurationDisposable = (self.engine.localization.getCountriesList(accountManager: sharedContext.accountManager, langCode: nil)
-        |> deliverOnMainQueue).start(next: { value in
-            let _ = currentCountriesConfiguration.swap(CountriesConfiguration(countries: value))
-        })
+        if !temp {
+            let currentCountriesConfiguration = self.currentCountriesConfiguration
+            self.countriesConfigurationDisposable = (self.engine.localization.getCountriesList(accountManager: sharedContext.accountManager, langCode: nil)
+                                                     |> deliverOnMainQueue).start(next: { value in
+                let _ = currentCountriesConfiguration.swap(CountriesConfiguration(countries: value))
+            })
+        }
         
         let queue = Queue()
         self.deviceSpecificContactImportContexts = QueueLocalObject(queue: queue, generate: {
@@ -380,19 +387,20 @@ public final class AccountContextImpl: AccountContext {
             strongSelf.animatedEmojiStickersValue.set(.single(stickers))
         })
         
-        self.userLimitsConfigurationDisposable = (self.account.postbox.peerView(id: self.account.peerId)
-        |> mapToSignal { peerView -> Signal<EngineConfiguration.UserLimits, NoError> in
-            if let peer = peerView.peers[peerView.peerId] {
-                return self.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.UserLimits(isPremium: peer.isPremium))
-            } else {
-                return .complete()
+        self.userLimitsConfigurationDisposable = (self.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: account.peerId))
+        |> mapToSignal { peer -> Signal<(Bool, EngineConfiguration.UserLimits), NoError> in
+            let isPremium = peer?.isPremium ?? false
+            return self.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.UserLimits(isPremium: isPremium))
+            |> map { userLimits in
+                return (isPremium, userLimits)
             }
         }
-        |> deliverOnMainQueue).start(next: { [weak self] value in
+        |> deliverOnMainQueue).start(next: { [weak self] isPremium, userLimits in
             guard let strongSelf = self else {
                 return
             }
-            strongSelf.userLimits = value
+            strongSelf.isPremium = isPremium
+            strongSelf.userLimits = userLimits
         })
     }
     
@@ -404,6 +412,7 @@ public final class AccountContextImpl: AccountContext {
         self.countriesConfigurationDisposable?.dispose()
         self.experimentalUISettingsDisposable?.dispose()
         self.animatedEmojiStickersDisposable?.dispose()
+        self.userLimitsConfigurationDisposable?.dispose()
     }
     
     public func storeSecureIdPassword(password: String) {

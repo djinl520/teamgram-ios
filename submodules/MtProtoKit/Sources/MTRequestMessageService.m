@@ -89,6 +89,10 @@
         
         if (![_requests containsObject:request])
         {
+            if (MTLogEnabled()) {
+                MTLog(@"[MTRequestMessageService#%" PRIxPTR " add request %@]", (intptr_t)self, request.metadata);
+            }
+            
             [_requests addObject:request];
             [mtProto requestTransportTransaction];
         }
@@ -106,6 +110,7 @@
     {
         bool anyNewDropRequests = false;
         bool removedAnyRequest = false;
+        bool mergedAskForReconnectionOnDrop = askForReconnectionOnDrop;
         
         int index = -1;
         for (MTRequest *request in _requests)
@@ -117,7 +122,10 @@
                 if (request.requestContext != nil)
                 {
                     //[_dropReponseContexts addObject:[[MTDropResponseContext alloc] initWithDropMessageId:request.requestContext.messageId]];
-                    //anyNewDropRequests = true;
+                    anyNewDropRequests = true;
+                    if (request.expectedResponseSize >= 512 * 1024) {
+                        mergedAskForReconnectionOnDrop = true;
+                    }
                 }
                 
                 if (request.requestContext.messageId != 0) {
@@ -138,8 +146,9 @@
         {
             MTProto *mtProto = _mtProto;
             
-            if (askForReconnectionOnDrop)
-                [mtProto requestSecureTransportReset];
+            if (mergedAskForReconnectionOnDrop) {
+                [mtProto resetSessionInfo:true];
+            }
 
             [mtProto requestTransportTransaction];
         }
@@ -365,7 +374,7 @@
         MTRequestNoopParser responseParser = [[_context serialization] requestNoop:&noopData];
         [request setPayload:noopData metadata:@"noop" shortMetadata:@"noop" responseParser:responseParser];
         
-        [request setCompleted:^(__unused id result, __unused NSTimeInterval timestamp, __unused id error) {
+        [request setCompleted:^(__unused id result, __unused MTRequestResponseInfo *info, __unused id error) {
         }];
         
         [self addRequest:request];
@@ -610,6 +619,7 @@
                         }
                         
                         MTRequestContext *requestContext = [[MTRequestContext alloc] initWithMessageId:preparedMessage.messageId messageSeqNo:preparedMessage.seqNo transactionId:nil quickAckId:0];
+                        requestContext.sentTimestamp = CFAbsoluteTimeGetCurrent();
                         requestContext.willInitializeApi = requestsWillInitializeApi;
                         requestContext.waitingForMessageId = true;
                         request.requestContext = requestContext;
@@ -642,6 +652,7 @@
                             continue;
                         }
                         MTRequestContext *requestContext = [[MTRequestContext alloc] initWithMessageId:preparedMessage.messageId messageSeqNo:preparedMessage.seqNo transactionId:messageInternalIdToTransactionId[messageInternalId] quickAckId:(int32_t)[messageInternalIdToQuickAckId[messageInternalId] intValue]];
+                        requestContext.sentTimestamp = CFAbsoluteTimeGetCurrent();
                         requestContext.willInitializeApi = requestsWillInitializeApi;
                         request.requestContext = requestContext;
                     }
@@ -663,7 +674,7 @@
     return nil;
 }
 
-- (void)mtProto:(MTProto *)__unused mtProto receivedMessage:(MTIncomingMessage *)message authInfoSelector:(MTDatacenterAuthInfoSelector)authInfoSelector
+- (void)mtProto:(MTProto *)__unused mtProto receivedMessage:(MTIncomingMessage *)message authInfoSelector:(MTDatacenterAuthInfoSelector)authInfoSelector networkType:(int32_t)networkType
 {
     if ([message.body isKindOfClass:[MTRpcResultMessage class]])
     {
@@ -867,6 +878,8 @@
                         }
                     }
                     
+                    double sentTimestamp = request.requestContext.sentTimestamp;
+                    
                     request.requestContext = nil;
                     
                     if (restartRequest)
@@ -875,11 +888,17 @@
                     }
                     else
                     {
-                        void (^completed)(id result, NSTimeInterval completionTimestamp, id error) = [request.completed copy];
+                        void (^completed)(id result, MTRequestResponseInfo *info, id error) = [request.completed copy];
                         [_requests removeObjectAtIndex:(NSUInteger)index];
                         
-                        if (completed)
-                            completed(rpcResult, message.timestamp, rpcError);
+                        if (completed) {
+                            double duration = 0.0;
+                            if (sentTimestamp != 0.0) {
+                                duration = CFAbsoluteTimeGetCurrent() - sentTimestamp;
+                            }
+                            MTRequestResponseInfo *info = [[MTRequestResponseInfo alloc] initWithNetworkType:networkType timestamp:message.timestamp duration:duration];
+                            completed(rpcResult, info, rpcError);
+                        }
                     }
                     
                     break;
@@ -888,7 +907,7 @@
             
             if (!requestFound) {
                 if (MTLogEnabled()) {
-                    MTLog(@"[MTRequestMessageService#%p response %" PRId64 " didn't match any request]", self, message.messageId);
+                    MTLog(@"[MTRequestMessageService#%p response %" PRId64 " for % " PRId64 " didn't match any request]", self, message.messageId, rpcResultMessage.requestMessageId);
                 }
             }
             else if (_requests.count == 0)

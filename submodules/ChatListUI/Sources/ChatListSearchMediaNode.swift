@@ -166,7 +166,7 @@ private final class VisualMediaItemNode: ASDisplayNode {
             case .Local:
                 self.interaction.openMessage(message)
             case .Remote, .Paused:
-                self.fetchDisposable.set(messageMediaFileInteractiveFetched(context: self.context, message: message, file: file, userInitiated: true).start())
+                self.fetchDisposable.set(messageMediaFileInteractiveFetched(context: self.context, message: message, file: file, userInitiated: true).startStrict())
             }
         }
     }
@@ -220,7 +220,7 @@ private final class VisualMediaItemNode: ASDisplayNode {
                 self.item = (item, media, size, mediaDimensions)
                 
                 self.fetchStatusDisposable.set((messageMediaFileStatus(context: context, messageId: message.id, file: file)
-                |> deliverOnMainQueue).start(next: { [weak self] status in
+                |> deliverOnMainQueue).startStrict(next: { [weak self] status in
                     if let strongSelf = self, let _ = strongSelf.item {
                         strongSelf.resourceStatus = status
                         
@@ -257,25 +257,25 @@ private final class VisualMediaItemNode: ASDisplayNode {
                         })
                         
                         if let duration = file.duration {
-                            let durationString = stringForDuration(duration)
+                            let durationString = stringForDuration(Int32(duration))
                             
                             var badgeContent: ChatMessageInteractiveMediaBadgeContent?
                             var mediaDownloadState: ChatMessageInteractiveMediaDownloadState?
                             
                             if isStreamable {
                                 switch status {
-                                    case let .Fetching(_, progress):
-                                        let progressString = String(format: "%d%%", Int(progress * 100.0))
-                                        badgeContent = .text(inset: 12.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: progressString))
-                                        mediaDownloadState = .compactFetching(progress: 0.0)
-                                    case .Local:
-                                        badgeContent = .text(inset: 0.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: durationString))
-                                    case .Remote, .Paused:
-                                        badgeContent = .text(inset: 12.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: durationString))
-                                        mediaDownloadState = .compactRemote
+                                case let .Fetching(_, progress):
+                                    let progressString = String(format: "%d%%", Int(progress * 100.0))
+                                    badgeContent = .text(inset: 12.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: progressString), iconName: nil)
+                                    mediaDownloadState = .compactFetching(progress: 0.0)
+                                case .Local:
+                                    badgeContent = .text(inset: 0.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: durationString), iconName: nil)
+                                case .Remote, .Paused:
+                                    badgeContent = .text(inset: 12.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: durationString), iconName: nil)
+                                    mediaDownloadState = .compactRemote
                                 }
                             } else {
-                                badgeContent = .text(inset: 0.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: durationString))
+                                badgeContent = .text(inset: 0.0, backgroundColor: mediaBadgeBackgroundColor, foregroundColor: mediaBadgeTextColor, text: NSAttributedString(string: durationString), iconName: nil)
                             }
                             
                             strongSelf.mediaBadgeNode.update(theme: nil, content: badgeContent, mediaDownloadState: mediaDownloadState, alignment: .right, animated: false, badgeAnimated: false)
@@ -669,7 +669,7 @@ final class ChatListSearchMediaNode: ASDisplayNode, UIScrollViewDelegate {
         self.addSubnode(self.scrollNode)
         self.addSubnode(self.floatingHeaderNode)
         
-        self.hiddenMediaDisposable = context.sharedContext.mediaManager.galleryHiddenMediaManager.hiddenIds().start(next: { [weak self] ids in
+        self.hiddenMediaDisposable = context.sharedContext.mediaManager.galleryHiddenMediaManager.hiddenIds().startStrict(next: { [weak self] ids in
             guard let strongSelf = self else {
                 return
             }
@@ -683,7 +683,7 @@ final class ChatListSearchMediaNode: ASDisplayNode, UIScrollViewDelegate {
             for (_, itemNode) in strongSelf.visibleMediaItems {
                 itemNode.updateHiddenMedia()
             }
-        })
+        }).strict()
     }
     
     deinit {
@@ -702,7 +702,7 @@ final class ChatListSearchMediaNode: ASDisplayNode, UIScrollViewDelegate {
             var index: UInt32 = 0
             if let entries = entries {   
                 for entry in entries {
-                    if case let .message(message, _, _, _, _, _, _, _, _, _, _, _) = entry {
+                    if case let .message(message, _, _, _, _, _, _, _, _, _, _, _, _) = entry {
                         self.mediaItems.append(VisualMediaItem(message: message._asMessage(), index: nil))
                     }
                     index += 1

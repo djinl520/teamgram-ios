@@ -218,6 +218,7 @@ class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                 var mediaDuration: Double? = nil
                 var isSeekableWebMedia = false
                 var isUnsupportedMedia = false
+                var story: Stories.Item?
                 for media in item.message.media {
                     if let file = media as? TelegramMediaFile, let duration = file.duration {
                         mediaDuration = Double(duration)
@@ -226,11 +227,20 @@ class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                         isSeekableWebMedia = true
                     } else if media is TelegramMediaUnsupported {
                         isUnsupportedMedia = true
+                    } else if let storyMedia = media as? TelegramMediaStory {
+                        if let value = item.message.associatedStories[storyMedia.storyId]?.get(Stories.StoredItem.self) {
+                            if case let .item(storyValue) = value {
+                                story = storyValue
+                            }
+                        }
                     }
                 }
                 
                 var isTranslating = false
-                if isUnsupportedMedia {
+                if let story {
+                    rawText = story.text
+                    messageEntities = story.entities
+                } else if isUnsupportedMedia {
                     rawText = item.presentationData.strings.Conversation_UnsupportedMediaPlaceholder
                     messageEntities = [MessageTextEntity(range: 0..<rawText.count, type: .Italic)]
                 } else {
@@ -788,7 +798,9 @@ class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                     self?.updateIsTextSelectionActive?(value)
                 }, present: { [weak self] c, a in
                     self?.item?.controllerInteraction.presentGlobalOverlayController(c, a)
-                }, rootNode: rootNode, performAction: { [weak self] text, action in
+                }, rootNode: { [weak rootNode] in
+                    return rootNode
+                }, performAction: { [weak self] text, action in
                     guard let strongSelf = self, let item = strongSelf.item else {
                         return
                     }

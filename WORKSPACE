@@ -1,15 +1,13 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 http_archive(
-    name = "com_google_protobuf",
-    urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.14.0.zip"],
-    sha256 = "bf0e5070b4b99240183b29df78155eee335885e53a8af8683964579c214ad301",
-    strip_prefix = "protobuf-3.14.0",
-    type = "zip",
+    name = "bazel_features",
+    sha256 = "9fcb3d7cbe908772462aaa52f02b857a225910d30daa3c252f670e3af6d8036d",
+    strip_prefix = "bazel_features-1.0.0",
+    url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.0.0/bazel_features-v1.0.0.tar.gz",
 )
-
-load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
-protobuf_deps()
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+bazel_features_deps()
 
 local_repository(
     name = "build_bazel_rules_apple",
@@ -24,6 +22,11 @@ local_repository(
 local_repository(
     name = "build_bazel_apple_support",
     path = "build-system/bazel-rules/apple_support",
+)
+
+local_repository(
+    name = "rules_xcodeproj",
+    path = "build-system/bazel-rules/rules_xcodeproj",
 )
 
 load(
@@ -47,6 +50,13 @@ load(
 
 apple_support_dependencies()
 
+load(
+    "@rules_xcodeproj//xcodeproj:repositories.bzl",
+    "xcodeproj_rules_dependencies",
+)
+
+xcodeproj_rules_dependencies()
+
 load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 
 bazel_skylib_workspace()
@@ -62,4 +72,10 @@ http_archive(
     urls = ["https://github.com/microsoft/appcenter-sdk-apple/releases/download/4.1.1/AppCenter-SDK-Apple-4.1.1.zip"],
     sha256 = "032907801dc7784744a1ca8fd40d3eecc34a2e27a93a4b3993f617cca204a9f3",
     build_file = "@//third-party/AppCenter:AppCenter.BUILD",
+)
+
+load("@build_bazel_rules_apple//apple:apple.bzl", "provisioning_profile_repository")
+
+provisioning_profile_repository(
+    name = "local_provisioning_profiles",
 )

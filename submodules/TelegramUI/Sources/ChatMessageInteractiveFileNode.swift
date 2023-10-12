@@ -319,7 +319,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
             switch resourceStatus.mediaStatus {
             case let .fetchStatus(fetchStatus):
                 if let context = self.context, let message = self.message, message.flags.isSending {
-                    let _ = context.engine.messages.deleteMessagesInteractively(messageIds: [message.id], type: .forEveryone).start()
+                    let _ = context.engine.messages.deleteMessagesInteractively(messageIds: [message.id], type: .forEveryone).startStandalone()
                 } else {
                     switch fetchStatus {
                     case .Fetching:
@@ -335,7 +335,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     }
                 }
             case .playbackStatus:
-                if let context = self.context, let message = self.message, let type = peerMessageMediaPlayerType(message) {
+                if let context = self.context, let message = self.message, let type = peerMessageMediaPlayerType(EngineMessage(message)) {
                     context.sharedContext.mediaManager.playlistControl(.playback(.togglePlayPause), type: type)
                 }
             }
@@ -368,7 +368,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 if case .undo = action {
                     var replaceImpl: ((ViewController) -> Void)?
                     let controller = context.sharedContext.makePremiumDemoController(context: context, subject: .voiceToText, action: {
-                        let controller = context.sharedContext.makePremiumIntroController(context: context, source: .settings)
+                        let controller = context.sharedContext.makePremiumIntroController(context: context, source: .settings, forceDark: false, dismissed: nil)
                         replaceImpl?(controller)
                     })
                     replaceImpl = { [weak controller] c in
@@ -376,7 +376,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     }
                     arguments.controllerInteraction.navigationController()?.pushViewController(controller, animated: true)
                     
-                    let _ = ApplicationSpecificNotice.incrementAudioTranscriptionSuggestion(accountManager: context.sharedContext.accountManager).start()
+                    let _ = ApplicationSpecificNotice.incrementAudioTranscriptionSuggestion(accountManager: context.sharedContext.accountManager).startStandalone()
                 }
                 return false })
             arguments.controllerInteraction.presentControllerInCurrent(tipController, nil)
@@ -443,13 +443,13 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     }
                     
                     self.transcribeDisposable = (signal
-                    |> deliverOnMainQueue).start(next: { [weak self] result in
+                    |> deliverOnMainQueue).startStrict(next: { [weak self] result in
                         guard let strongSelf = self, let arguments = strongSelf.arguments else {
                             return
                         }
                         
                         if let result = result {
-                            let _ = arguments.context.engine.messages.storeLocallyTranscribedAudio(messageId: arguments.message.id, text: result.text, isFinal: result.isFinal, error: nil).start()
+                            let _ = arguments.context.engine.messages.storeLocallyTranscribedAudio(messageId: arguments.message.id, text: result.text, isFinal: result.isFinal, error: nil).startStandalone()
                         } else {
                             strongSelf.audioTranscriptionState = .collapsed
                             strongSelf.requestUpdateLayout(true)
@@ -462,7 +462,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     })
                 } else {
                     self.transcribeDisposable = (context.engine.messages.transcribeAudio(messageId: message.id)
-                    |> deliverOnMainQueue).start(next: { [weak self] result in
+                    |> deliverOnMainQueue).startStrict(next: { [weak self] result in
                         guard let strongSelf = self else {
                             return
                         }
@@ -534,7 +534,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     
                     updatedFetchControls = FetchControls(fetch: { [weak self] userInitiated in
                         if let strongSelf = self {
-                            strongSelf.fetchDisposable.set(messageMediaFileInteractiveFetched(context: arguments.context, message: arguments.message, file: arguments.file, userInitiated: userInitiated).start())
+                            strongSelf.fetchDisposable.set(messageMediaFileInteractiveFetched(context: arguments.context, message: arguments.message, file: arguments.file, userInitiated: userInitiated).startStrict())
                         }
                     }, cancel: {
                         messageMediaFileCancelInteractiveFetch(context: arguments.context, messageId: arguments.message.id, file: arguments.file)
@@ -543,19 +543,19 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 
                 if statusUpdated {
                     if arguments.message.flags.isSending {
-                        updatedStatusSignal = combineLatest(messageFileMediaResourceStatus(context: arguments.context, file: arguments.file, message: arguments.message, isRecentActions: arguments.isRecentActions), messageMediaFileStatus(context: arguments.context, messageId: arguments.message.id, file: arguments.file))
+                        updatedStatusSignal = combineLatest(messageFileMediaResourceStatus(context: arguments.context, file: arguments.file, message: EngineMessage(arguments.message), isRecentActions: arguments.isRecentActions), messageMediaFileStatus(context: arguments.context, messageId: arguments.message.id, file: arguments.file))
                         |> map { resourceStatus, actualFetchStatus -> (FileMediaResourceStatus, MediaResourceStatus?) in
                             return (resourceStatus, actualFetchStatus)
                         }
-                        updatedAudioLevelEventsSignal = messageFileMediaPlaybackAudioLevelEvents(context: arguments.context, file: arguments.file, message: arguments.message, isRecentActions: arguments.isRecentActions, isGlobalSearch: false, isDownloadList: false)
+                        updatedAudioLevelEventsSignal = messageFileMediaPlaybackAudioLevelEvents(context: arguments.context, file: arguments.file, message: EngineMessage(arguments.message), isRecentActions: arguments.isRecentActions, isGlobalSearch: false, isDownloadList: false)
                     } else {
-                        updatedStatusSignal = messageFileMediaResourceStatus(context: arguments.context, file: arguments.file, message: arguments.message, isRecentActions: arguments.isRecentActions)
+                        updatedStatusSignal = messageFileMediaResourceStatus(context: arguments.context, file: arguments.file, message: EngineMessage(arguments.message), isRecentActions: arguments.isRecentActions)
                         |> map { resourceStatus -> (FileMediaResourceStatus, MediaResourceStatus?) in
                             return (resourceStatus, nil)
                         }
-                        updatedAudioLevelEventsSignal = messageFileMediaPlaybackAudioLevelEvents(context: arguments.context, file: arguments.file, message: arguments.message, isRecentActions: arguments.isRecentActions, isGlobalSearch: false, isDownloadList: false)
+                        updatedAudioLevelEventsSignal = messageFileMediaPlaybackAudioLevelEvents(context: arguments.context, file: arguments.file, message: EngineMessage(arguments.message), isRecentActions: arguments.isRecentActions, isGlobalSearch: false, isDownloadList: false)
                     }
-                    updatedPlaybackStatusSignal = messageFileMediaPlaybackStatus(context: arguments.context, file: arguments.file, message: arguments.message, isRecentActions: arguments.isRecentActions, isGlobalSearch: false, isDownloadList: false)
+                    updatedPlaybackStatusSignal = messageFileMediaPlaybackStatus(context: arguments.context, file: arguments.file, message: EngineMessage(arguments.message), isRecentActions: arguments.isRecentActions, isGlobalSearch: false, isDownloadList: false)
                 }
                                 
                 var isAudio = false
@@ -585,7 +585,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 let messageTheme = arguments.incoming ? arguments.presentationData.theme.theme.chat.message.incoming : arguments.presentationData.theme.theme.chat.message.outgoing
                 let isInstantVideo = arguments.file.isInstantVideo
                 for attribute in arguments.file.attributes {
-                    if case let .Video(videoDuration, _, flags) = attribute, flags.contains(.instantRoundVideo) {
+                    if case let .Video(videoDuration, _, flags, _) = attribute, flags.contains(.instantRoundVideo) {
                         isAudio = true
                         isVoice = true
                         
@@ -628,7 +628,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                             let descriptionText: String
                             if let performer = performer {
                                 descriptionText = performer
-                            } else if let size = arguments.file.size {
+                            } else if let size = arguments.file.size, size > 0 && size != .max {
                                 descriptionText = dataSizeString(size, formatting: DataSizeStringFormatting(chatPresentationData: arguments.presentationData))
                             } else {
                                 descriptionText = ""
@@ -656,7 +656,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     descriptionString = candidateDescriptionString
                 } else if !isVoice {
                     let descriptionText: String
-                    if let size = arguments.file.size {
+                    if let size = arguments.file.size, size > 0 && size != .max {
                         descriptionText = dataSizeString(size, formatting: DataSizeStringFormatting(chatPresentationData: arguments.presentationData))
                     } else {
                         descriptionText = ""
@@ -1192,14 +1192,16 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                                         backgroundColor: isTranscriptionInProgress ? messageTheme.mediaInactiveControlColor : waveformColor,
                                         foregroundColor: messageTheme.mediaActiveControlColor,
                                         shimmerColor: isTranscriptionInProgress ? messageTheme.mediaActiveControlColor : nil,
+                                        style: .bottom,
                                         samples: audioWaveform?.samples ?? Data(),
                                         peak: audioWaveform?.peak ?? 0,
                                         status: strongSelf.playbackStatus.get(),
                                         seek: { timestamp in
-                                            if let strongSelf = self, let context = strongSelf.context, let message = strongSelf.message, let type = peerMessageMediaPlayerType(message) {
+                                            if let strongSelf = self, let context = strongSelf.context, let message = strongSelf.message, let type = peerMessageMediaPlayerType(EngineMessage(message)) {
                                                 context.sharedContext.mediaManager.playlistControl(.seek(timestamp), type: type)
                                             }
-                                        }
+                                        },
+                                        updateIsSeeking: nil
                                     )),
                                     environment: {},
                                     containerSize: scrubbingFrame.size
@@ -1291,7 +1293,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                                         return .single(next) |> then(.complete() |> delay(0.1, queue: Queue.concurrentDefaultQueue()))
                                     }
                                 }
-                                strongSelf.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).start(next: { [weak strongSelf] status, actualFetchStatus in
+                                strongSelf.statusDisposable.set((updatedStatusSignal |> deliverOnMainQueue).startStrict(next: { [weak strongSelf] status, actualFetchStatus in
                                     displayLinkDispatcher.dispatch {
                                         if let strongSelf = strongSelf {
                                             let firstTime = strongSelf.resourceStatus == nil
@@ -1305,7 +1307,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                             
                             if let updatedAudioLevelEventsSignal = updatedAudioLevelEventsSignal {
                                 strongSelf.audioLevelEventsDisposable.set((updatedAudioLevelEventsSignal
-                                |> deliverOnMainQueue).start(next: { value in
+                                |> deliverOnMainQueue).startStrict(next: { value in
                                     guard let strongSelf = self else {
                                         return
                                     }
@@ -1316,7 +1318,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                             
                             if let updatedPlaybackStatusSignal = updatedPlaybackStatusSignal {
                                 strongSelf.playbackStatus.set(updatedPlaybackStatusSignal)
-                                strongSelf.playbackStatusDisposable.set((updatedPlaybackStatusSignal |> deliverOnMainQueue).start(next: { [weak strongSelf] status in
+                                strongSelf.playbackStatusDisposable.set((updatedPlaybackStatusSignal |> deliverOnMainQueue).startStrict(next: { [weak strongSelf] status in
                                     displayLinkDispatcher.dispatch {
                                         if let strongSelf = strongSelf {
                                             strongSelf.playerStatus = status
@@ -1437,7 +1439,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
         var isVoice = false
         var audioDuration: Int32?
         for attribute in file.attributes {
-            if case let .Video(duration, _, flags) = attribute, flags.contains(.instantRoundVideo) {
+            if case let .Video(duration, _, flags, _) = attribute, flags.contains(.instantRoundVideo) {
                 isAudio = true
                 isVoice = true
                 audioDuration = Int32(duration)
@@ -1450,7 +1452,7 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
             }
         }
         
-        let state: SemanticStatusNodeState
+        var state: SemanticStatusNodeState
         var streamingState: SemanticStatusNodeState = .none
         
         let isSending = message.flags.isSending
@@ -1462,13 +1464,14 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
             if let actualFetchStatus = self.actualFetchStatus, message.forwardInfo != nil {
                 fetchStatus = actualFetchStatus
             } else if case let .fetchStatus(status) = resourceStatus.mediaStatus {
-                fetchStatus = status
+                fetchStatus = status._asStatus()
             }
 
             if let fetchStatus = fetchStatus {
                 switch fetchStatus {
                     case let .Fetching(_, progress):
-                        if let size = file.size {
+                        if let size = file.size, size > 0 && size != .max {
+                            let progress = max(0.0, min(1.0, progress))
                             let compactString = dataSizeString(Int(Float(size) * progress), forceDecimal: true, formatting: DataSizeStringFormatting(chatPresentationData: presentationData))
                             let descriptionFont = Font.with(size: floor(presentationData.fontSize.baseDisplaySize * 13.0 / 17.0), design: .regular, weight: .regular, traits: [.monospacedNumbers])
                             downloadingStrings = ("\(compactString) / \(dataSizeString(size, forceDecimal: true, formatting: DataSizeStringFormatting(chatPresentationData: presentationData)))", compactString, descriptionFont)
@@ -1558,6 +1561,17 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
             }
         } else {
             streamingState = .none
+        }
+        
+        if isSending {
+            streamingState = .none
+            
+            if case .progress = state {
+            } else if case .check = state {
+            } else {
+                let adjustedProgress: CGFloat = 0.027
+                state = .progress(value: CGFloat(adjustedProgress), cancelEnabled: true, appearance: .init(inset: 1.0, lineWidth: 2.0))
+            }
         }
         
         let backgroundNodeColor: UIColor
@@ -1780,7 +1794,9 @@ final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     self?.updateIsTextSelectionActive?(value)
                 }, present: { [weak self] c, a in
                     self?.arguments?.controllerInteraction.presentGlobalOverlayController(c, a)
-                }, rootNode: rootNode, performAction: { [weak self] text, action in
+                }, rootNode: { [weak rootNode] in
+                    return rootNode
+                }, performAction: { [weak self] text, action in
                     guard let strongSelf = self, let item = strongSelf.arguments else {
                         return
                     }

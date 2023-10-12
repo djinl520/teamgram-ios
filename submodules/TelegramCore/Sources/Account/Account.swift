@@ -224,9 +224,10 @@ public func accountWithId(accountManager: AccountManager<TelegramAccountManagerT
                                 )!, forKey: id as NSNumber)
                             }
                             
-                            let data = NSKeyedArchiver.archivedData(withRootObject: dict)
                             transaction.setState(backupState)
-                            transaction.setKeychainEntry(data, forKey: "persistent:datacenterAuthInfoById")
+                            if let data = try? NSKeyedArchiver.archivedData(withRootObject: dict, requiringSecureCoding: false) {
+                                transaction.setKeychainEntry(data, forKey: "persistent:datacenterAuthInfoById")
+                            }
                         }
                         
                         let appConfig = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? .defaultValue
@@ -685,12 +686,12 @@ public enum AccountNetworkState: Equatable {
 }
 
 public final class AccountAuxiliaryMethods {
-    public let fetchResource: (Account, MediaResource, Signal<[(Range<Int64>, MediaBoxFetchPriority)], NoError>, MediaResourceFetchParameters?) -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError>?
+    public let fetchResource: (Postbox, MediaResource, Signal<[(Range<Int64>, MediaBoxFetchPriority)], NoError>, MediaResourceFetchParameters?) -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError>?
     public let fetchResourceMediaReferenceHash: (MediaResource) -> Signal<Data?, NoError>
     public let prepareSecretThumbnailData: (MediaResourceData) -> (PixelDimensions, Data)?
     public let backgroundUpload: (Postbox, Network, MediaResource) -> Signal<String?, NoError>
     
-    public init(fetchResource: @escaping (Account, MediaResource, Signal<[(Range<Int64>, MediaBoxFetchPriority)], NoError>, MediaResourceFetchParameters?) -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError>?, fetchResourceMediaReferenceHash: @escaping (MediaResource) -> Signal<Data?, NoError>, prepareSecretThumbnailData: @escaping (MediaResourceData) -> (PixelDimensions, Data)?, backgroundUpload: @escaping (Postbox, Network, MediaResource) -> Signal<String?, NoError>) {
+    public init(fetchResource: @escaping (Postbox, MediaResource, Signal<[(Range<Int64>, MediaBoxFetchPriority)], NoError>, MediaResourceFetchParameters?) -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError>?, fetchResourceMediaReferenceHash: @escaping (MediaResource) -> Signal<Data?, NoError>, prepareSecretThumbnailData: @escaping (MediaResourceData) -> (PixelDimensions, Data)?, backgroundUpload: @escaping (Postbox, Network, MediaResource) -> Signal<String?, NoError>) {
         self.fetchResource = fetchResource
         self.fetchResourceMediaReferenceHash = fetchResourceMediaReferenceHash
         self.prepareSecretThumbnailData = prepareSecretThumbnailData
@@ -837,7 +838,7 @@ public func accountBackupData(postbox: Postbox) -> Signal<AccountBackupData?, No
         guard let authInfoData = transaction.keychainEntryForKey("persistent:datacenterAuthInfoById") else {
             return nil
         }
-        guard let authInfo = NSKeyedUnarchiver.unarchiveObject(with: authInfoData) as? NSDictionary else {
+        guard let authInfo = MTDeprecated.unarchiveDeprecated(with: authInfoData) as? NSDictionary else {
             return nil
         }
         guard let datacenterAuthInfo = authInfo.object(forKey: state.masterDatacenterId as NSNumber) as? MTDatacenterAuthInfo else {
@@ -912,9 +913,11 @@ public class Account {
     private var resetPeerHoleManagement: ((PeerId) -> Void)?
     
     public private(set) var pendingMessageManager: PendingMessageManager!
+    private(set) var pendingStoryManager: PendingStoryManager?
     public private(set) var pendingUpdateMessageManager: PendingUpdateMessageManager!
     private(set) var messageMediaPreuploadManager: MessageMediaPreuploadManager!
     private(set) var mediaReferenceRevalidationContext: MediaReferenceRevalidationContext!
+    public private(set) var pendingPeerMediaUploadManager: PendingPeerMediaUploadManager!
     private var peerInputActivityManager: PeerInputActivityManager!
     private var localInputActivityManager: PeerInputActivityManager!
     private var accountPresenceManager: AccountPresenceManager!
@@ -970,6 +973,11 @@ public class Account {
     private var lastSmallLogPostTimestamp: Double?
     private let smallLogPostDisposable = MetaDisposable()
     
+    let networkStatsContext: NetworkStatsContext
+    
+    public let filteredStorySubscriptionsContext: StorySubscriptionsContext?
+    public let hiddenStorySubscriptionsContext: StorySubscriptionsContext?
+    
     public init(accountManager: AccountManager<TelegramAccountManagerTypes>, id: AccountRecordId, basePath: String, testingEnvironment: Bool, postbox: Postbox, network: Network, networkArguments: NetworkInitializationArguments, peerId: PeerId, auxiliaryMethods: AccountAuxiliaryMethods, supplementary: Bool) {
         self.accountManager = accountManager
         self.id = id
@@ -983,8 +991,19 @@ public class Account {
         self.auxiliaryMethods = auxiliaryMethods
         self.supplementary = supplementary
         
+        self.networkStatsContext = NetworkStatsContext(postbox: postbox)
+        
         self.peerInputActivityManager = PeerInputActivityManager()
-        self.callSessionManager = CallSessionManager(postbox: postbox, network: network, maxLayer: networkArguments.voipMaxLayer, versions: networkArguments.voipVersions, addUpdates: { [weak self] updates in
+        
+        if !supplementary {
+            self.filteredStorySubscriptionsContext = StorySubscriptionsContext(accountPeerId: peerId, postbox: postbox, network: network, isHidden: false)
+            self.hiddenStorySubscriptionsContext = StorySubscriptionsContext(accountPeerId: peerId, postbox: postbox, network: network, isHidden: true)
+        } else {
+            self.filteredStorySubscriptionsContext = nil
+            self.hiddenStorySubscriptionsContext = nil
+        }
+        
+        self.callSessionManager = CallSessionManager(postbox: postbox, network: network, accountPeerId: peerId, maxLayer: networkArguments.voipMaxLayer, versions: networkArguments.voipVersions, addUpdates: { [weak self] updates in
             self?.stateManager?.addUpdates(updates)
         })
         
@@ -1024,7 +1043,13 @@ public class Account {
         
         self.messageMediaPreuploadManager = MessageMediaPreuploadManager()
         self.pendingMessageManager = PendingMessageManager(network: network, postbox: postbox, accountPeerId: peerId, auxiliaryMethods: auxiliaryMethods, stateManager: self.stateManager, localInputActivityManager: self.localInputActivityManager, messageMediaPreuploadManager: self.messageMediaPreuploadManager, revalidationContext: self.mediaReferenceRevalidationContext)
+        if !supplementary {
+            self.pendingStoryManager = PendingStoryManager(postbox: postbox, network: network, accountPeerId: peerId, stateManager: self.stateManager, messageMediaPreuploadManager: self.messageMediaPreuploadManager, revalidationContext: self.mediaReferenceRevalidationContext, auxiliaryMethods: self.auxiliaryMethods)
+        } else {
+            self.pendingStoryManager = nil
+        }
         self.pendingUpdateMessageManager = PendingUpdateMessageManager(postbox: postbox, network: network, stateManager: self.stateManager, messageMediaPreuploadManager: self.messageMediaPreuploadManager, mediaReferenceRevalidationContext: self.mediaReferenceRevalidationContext)
+        self.pendingPeerMediaUploadManager = PendingPeerMediaUploadManager(postbox: postbox, network: network, stateManager: self.stateManager, accountPeerId: self.peerId)
         
         self.network.loggedOut = { [weak self] in
             Logger.shared.log("Account", "network logged out")
@@ -1131,16 +1156,54 @@ public class Account {
         self.managedOperationsDisposable.add(managedCloudChatRemoveMessagesOperations(postbox: self.postbox, network: self.network, stateManager: self.stateManager).start())
         self.managedOperationsDisposable.add(managedAutoremoveMessageOperations(network: self.network, postbox: self.postbox, isRemove: true).start())
         self.managedOperationsDisposable.add(managedAutoremoveMessageOperations(network: self.network, postbox: self.postbox, isRemove: false).start())
+        self.managedOperationsDisposable.add(managedAutoexpireStoryOperations(network: self.network, postbox: self.postbox).start())
         self.managedOperationsDisposable.add(managedPeerTimestampAttributeOperations(network: self.network, postbox: self.postbox).start())
+        self.managedOperationsDisposable.add(managedSynchronizeViewStoriesOperations(postbox: self.postbox, network: self.network, stateManager: self.stateManager).start())
+        self.managedOperationsDisposable.add(managedSynchronizePeerStoriesOperations(postbox: self.postbox, network: self.network, stateManager: self.stateManager).start())
         self.managedOperationsDisposable.add(managedLocalTypingActivities(activities: self.localInputActivityManager.allActivities(), postbox: self.stateManager.postbox, network: self.stateManager.network, accountPeerId: self.stateManager.accountPeerId).start())
         
-        let importantBackgroundOperations: [Signal<AccountRunningImportantTasks, NoError>] = [
-            managedSynchronizeChatInputStateOperations(postbox: self.postbox, network: self.network) |> map { $0 ? AccountRunningImportantTasks.other : [] },
-            self.pendingMessageManager.hasPendingMessages |> map { !$0.isEmpty ? AccountRunningImportantTasks.pendingMessages : [] },
-            self.pendingUpdateMessageManager.updatingMessageMedia |> map { !$0.isEmpty ? AccountRunningImportantTasks.pendingMessages : [] },
-            self.accountPresenceManager.isPerformingUpdate() |> map { $0 ? AccountRunningImportantTasks.other : [] },
-            self.notificationAutolockReportManager.isPerformingUpdate() |> map { $0 ? AccountRunningImportantTasks.other : [] }
+        let extractedExpr1: [Signal<AccountRunningImportantTasks, NoError>] = [
+            managedSynchronizeChatInputStateOperations(postbox: self.postbox, network: self.network) |> map { inputStates in
+                if inputStates {
+                    print("inputStates: true")
+                }
+                return inputStates ? AccountRunningImportantTasks.other : []
+            },
+            self.pendingMessageManager.hasPendingMessages |> map { hasPendingMessages in
+                if !hasPendingMessages.isEmpty {
+                    print("hasPendingMessages: true")
+                }
+                return !hasPendingMessages.isEmpty ? AccountRunningImportantTasks.pendingMessages : []
+            },
+            (self.pendingStoryManager?.hasPending ?? .single(false)) |> map { hasPending in
+                if hasPending {
+                    print("hasPending: true")
+                }
+                return hasPending ? AccountRunningImportantTasks.pendingMessages : []
+            },
+            self.pendingUpdateMessageManager.updatingMessageMedia |> map { updatingMessageMedia in
+                if !updatingMessageMedia.isEmpty {
+                    print("updatingMessageMedia: true")
+                }
+                return !updatingMessageMedia.isEmpty ? AccountRunningImportantTasks.pendingMessages : []
+            },
+            self.pendingPeerMediaUploadManager.uploadingPeerMedia |> map { uploadingPeerMedia in
+                if !uploadingPeerMedia.isEmpty {
+                    print("uploadingPeerMedia: true")
+                }
+                return !uploadingPeerMedia.isEmpty ? AccountRunningImportantTasks.pendingMessages : []
+            },
+            self.accountPresenceManager.isPerformingUpdate() |> map { presenceUpdate in
+                if presenceUpdate {
+                    print("accountPresenceManager isPerformingUpdate: true")
+                    return []
+                }
+                return presenceUpdate ? AccountRunningImportantTasks.other : []
+            },
+            //self.notificationAutolockReportManager.isPerformingUpdate() |> map { $0 ? AccountRunningImportantTasks.other : [] }
         ]
+        let extractedExpr: [Signal<AccountRunningImportantTasks, NoError>] = extractedExpr1
+        let importantBackgroundOperations: [Signal<AccountRunningImportantTasks, NoError>] = extractedExpr
         let importantBackgroundOperationsRunning = combineLatest(queue: Queue(), importantBackgroundOperations)
         |> map { values -> AccountRunningImportantTasks in
             var result: AccountRunningImportantTasks = []
@@ -1274,7 +1337,7 @@ public class Account {
         return _internal_reindexCacheInBackground(account: self, lowImpact: lowImpact)
         |> then(
             Signal { subscriber in
-                return postbox.mediaBox.updateResourceIndex(lowImpact: lowImpact, completion: {
+                return postbox.mediaBox.updateResourceIndex(otherResourceContentType: MediaResourceUserContentType.other.rawValue, lowImpact: lowImpact, completion: {
                     subscriber.putCompletion()
                 })
             }
@@ -1342,7 +1405,7 @@ public typealias TransformOutgoingMessageMedia = (_ postbox: Postbox, _ network:
 public func setupAccount(_ account: Account, fetchCachedResourceRepresentation: FetchCachedResourceRepresentation? = nil, transformOutgoingMessageMedia: TransformOutgoingMessageMedia? = nil) {
     account.postbox.mediaBox.fetchResource = { [weak account] resource, intervals, parameters -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError> in
         if let strongAccount = account {
-            if let result = strongAccount.auxiliaryMethods.fetchResource(strongAccount, resource, intervals, parameters) {
+            if let result = strongAccount.auxiliaryMethods.fetchResource(strongAccount.postbox, resource, intervals, parameters) {
                 return result
             } else if let result = fetchResource(account: strongAccount, resource: resource, intervals: intervals, parameters: parameters) {
                 return result
@@ -1439,6 +1502,9 @@ public func standaloneStateManager(
                             |> mapToSignal { phoneNumber in
                                 Logger.shared.log("StandaloneStateManager", "received phone number")
                                 
+                                let mediaReferenceRevalidationContext = MediaReferenceRevalidationContext()
+                                let networkStatsContext = NetworkStatsContext(postbox: postbox)
+                                
                                 return initializedNetwork(
                                     accountId: id,
                                     arguments: networkArguments,
@@ -1455,6 +1521,31 @@ public func standaloneStateManager(
                                 )
                                 |> map { network -> AccountStateManager? in
                                     Logger.shared.log("StandaloneStateManager", "received network")
+                                    
+                                    postbox.mediaBox.fetchResource = { resource, intervals, parameters -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError> in
+                                        if let result = auxiliaryMethods.fetchResource(
+                                            postbox,
+                                            resource,
+                                            intervals,
+                                            parameters
+                                        ) {
+                                            return result
+                                        } else if let result = fetchResource(
+                                            accountPeerId: authorizedState.peerId,
+                                            postbox: postbox,
+                                            network: network,
+                                            mediaReferenceRevalidationContext: mediaReferenceRevalidationContext,
+                                            networkStatsContext: networkStatsContext,
+                                            isTestingEnvironment: authorizedState.isTestingEnvironment,
+                                            resource: resource,
+                                            intervals: intervals,
+                                            parameters: parameters
+                                        ) {
+                                            return result
+                                        } else {
+                                            return .never()
+                                        }
+                                    }
                                     
                                     return AccountStateManager(
                                         accountPeerId: authorizedState.peerId,

@@ -19,6 +19,7 @@ import UndoUI
 import TelegramNotices
 import Markdown
 import TextFormat
+import ChatMessageForwardInfoNode
 
 struct ChatMessageInstantVideoItemLayoutResult {
     let contentSize: CGSize
@@ -79,9 +80,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
     private var automaticDownload: Bool?
     var media: TelegramMediaFile?
     var appliedForwardInfo: (Peer?, String?)?
-    
-    private var secretProgressIcon: UIImage?
-    
+        
     private let fetchDisposable = MetaDisposable()
 
     private var durationBackgroundNode: NavigationBackgroundNode?
@@ -258,9 +257,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
             
             let theme = item.presentationData.theme
             let isSecretMedia = item.message.containsSecretMedia
-            var secretProgressIcon: UIImage?
             if isSecretMedia {
-                secretProgressIcon = PresentationResourcesChat.chatBubbleSecretMediaIcon(theme.theme)
                 secretVideoPlaceholderBackgroundImage = PresentationResourcesChat.chatInstantVideoBackgroundImage(theme.theme, wallpaper: !theme.wallpaper.isEmpty)
             }
             
@@ -315,6 +312,9 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
             let availableContentWidth = width - bubbleEdgeInset * 2.0 - bubbleContentInsetsLeft - 20.0
             
             if !ignoreHeaders {
+                var replyMessage: Message?
+                var replyStory: StoryId?
+                
                 for attribute in item.message.attributes {
                     if let attribute = attribute as? InlineBotMessageAttribute {
                         var inlineBotNameString: String?
@@ -337,22 +337,32 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                         }
                     }
                     
-                    if let replyAttribute = attribute as? ReplyMessageAttribute, let replyMessage = item.message.associatedMessages[replyAttribute.messageId] {
+                    if let replyAttribute = attribute as? ReplyMessageAttribute {
                         if case let .replyThread(replyThreadMessage) = item.chatLocation, replyThreadMessage.messageId == replyAttribute.messageId {
                         } else {
-                            replyInfoApply = makeReplyInfoLayout(ChatMessageReplyInfoNode.Arguments(
-                                presentationData: item.presentationData,
-                                strings: item.presentationData.strings,
-                                context: item.context,
-                                type: .standalone,
-                                message: replyMessage,
-                                parentMessage: item.message,
-                                constrainedSize: CGSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude),
-                                animationCache: item.controllerInteraction.presentationContext.animationCache,
-                                animationRenderer: item.controllerInteraction.presentationContext.animationRenderer,
-                                associatedData: item.associatedData
-                            ))
+                            replyMessage = item.message.associatedMessages[replyAttribute.messageId]
                         }
+                    } else if let attribute = attribute as? ReplyStoryAttribute {
+                        replyStory = attribute.storyId
+                    }
+                }
+                
+                if replyMessage != nil || replyStory != nil {
+                    if case let .replyThread(replyThreadMessage) = item.chatLocation, replyThreadMessage.messageId == replyMessage?.id {
+                    } else {
+                        replyInfoApply = makeReplyInfoLayout(ChatMessageReplyInfoNode.Arguments(
+                            presentationData: item.presentationData,
+                            strings: item.presentationData.strings,
+                            context: item.context,
+                            type: .standalone,
+                            message: replyMessage,
+                            story: replyStory,
+                            parentMessage: item.message,
+                            constrainedSize: CGSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude),
+                            animationCache: item.controllerInteraction.presentationContext.animationCache,
+                            animationRenderer: item.controllerInteraction.presentationContext.animationRenderer,
+                            associatedData: item.associatedData
+                        ))
                     }
                 }
             }
@@ -398,7 +408,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     }
                 }
                 let availableWidth = max(60.0, availableContentWidth - 210.0 + 6.0)
-                forwardInfoSizeApply = makeForwardInfoLayout(item.presentationData, item.presentationData.strings, .standalone, forwardSource, forwardAuthorSignature, forwardPsaType, CGSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude))
+                forwardInfoSizeApply = makeForwardInfoLayout(item.presentationData, item.presentationData.strings, .standalone, forwardSource, forwardAuthorSignature, forwardPsaType, nil, CGSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude))
             }
             
             var notConsumed = false
@@ -416,7 +426,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
             
             var updatedPlaybackStatus: Signal<FileMediaResourceStatus, NoError>?
             if let updatedFile = updatedFile, updatedMedia || updatedMessageId {
-                updatedPlaybackStatus = combineLatest(messageFileMediaResourceStatus(context: item.context, file: updatedFile, message: item.message, isRecentActions: item.associatedData.isRecentActions), item.context.account.pendingMessageManager.pendingMessageStatus(item.message.id) |> map { $0.0 })
+                updatedPlaybackStatus = combineLatest(messageFileMediaResourceStatus(context: item.context, file: updatedFile, message: EngineMessage(item.message), isRecentActions: item.associatedData.isRecentActions), item.context.account.pendingMessageManager.pendingMessageStatus(item.message.id) |> map { $0.0 })
                 |> map { resourceStatus, pendingStatus -> FileMediaResourceStatus in
                     if let pendingStatus = pendingStatus {
                         var progress = pendingStatus.progress
@@ -561,7 +571,6 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     strongSelf.item = item
                     strongSelf.videoFrame = displayVideoFrame
                     strongSelf.appliedForwardInfo = (forwardSource, forwardAuthorSignature)
-                    strongSelf.secretProgressIcon = secretProgressIcon
                     
                     strongSelf.automaticDownload = automaticDownload
                     
@@ -614,7 +623,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     
                     if let updatedFile = updatedFile, updatedMedia {
                         if let resource = updatedFile.previewRepresentations.first?.resource {
-                            strongSelf.fetchedThumbnailDisposable.set(fetchedMediaResource(mediaBox: item.context.account.postbox.mediaBox, userLocation: .peer(item.message.id.peerId), userContentType: .video, reference: FileMediaReference.message(message: MessageReference(item.message), media: updatedFile).resourceReference(resource)).start())
+                            strongSelf.fetchedThumbnailDisposable.set(fetchedMediaResource(mediaBox: item.context.account.postbox.mediaBox, userLocation: .peer(item.message.id.peerId), userContentType: .video, reference: FileMediaReference.message(message: MessageReference(item.message), media: updatedFile).resourceReference(resource)).startStrict())
                         } else {
                             strongSelf.fetchedThumbnailDisposable.set(nil)
                         }
@@ -690,7 +699,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                                         }
                                     }
                                 }
-                            }), content: NativeVideoContent(id: .message(item.message.stableId, telegramFile.fileId), userLocation: .peer(item.message.id.peerId), fileReference: .message(message: MessageReference(item.message), media: telegramFile), streamVideo: streamVideo ? .conservative : .none, enableSound: false, fetchAutomatically: false, captureProtected: item.message.isCopyProtected(), storeAfterDownload: nil), priority: .embedded, autoplay: item.context.sharedContext.energyUsageSettings.autoplayVideo)
+                            }), content: NativeVideoContent(id: .message(item.message.stableId, telegramFile.fileId), userLocation: .peer(item.message.id.peerId), fileReference: .message(message: MessageReference(item.message), media: telegramFile), streamVideo: streamVideo ? .conservative : .none, enableSound: false, fetchAutomatically: false, isAudioVideoMessage: true, captureProtected: item.message.isCopyProtected(), storeAfterDownload: nil), priority: .embedded, autoplay: item.context.sharedContext.energyUsageSettings.autoplayVideo)
                             if let previousVideoNode = previousVideoNode {
                                 videoNode.bounds = previousVideoNode.bounds
                                 videoNode.position = previousVideoNode.position
@@ -722,7 +731,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     
                     if let updatedPlaybackStatus = updatedPlaybackStatus {
                         strongSelf.playbackStatusDisposable.set((updatedPlaybackStatus
-                        |> deliverOnMainQueue).start(next: { status in
+                        |> deliverOnMainQueue).startStrict(next: { status in
                             if let strongSelf = self {
                                 strongSelf.status = status
                                 strongSelf.updateStatus(animator: nil)
@@ -732,7 +741,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     
                     if let updatedPlayerStatusSignal = updatedPlayerStatusSignal {
                         strongSelf.playerStatusDisposable.set((updatedPlayerStatusSignal
-                        |> deliverOnMainQueue).start(next: { [weak self] status in
+                        |> deliverOnMainQueue).startStrict(next: { [weak self] status in
                             displayLinkDispatcher.dispatch {
                                 if let strongSelf = self {
                                     strongSelf.playerStatus = status
@@ -883,7 +892,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     strongSelf.updateStatus(animator: animation.animator)
                     
                     if let telegramFile = updatedFile, previousAutomaticDownload != automaticDownload, automaticDownload {
-                        strongSelf.fetchDisposable.set(messageMediaFileInteractiveFetched(context: item.context, message: item.message, file: telegramFile, userInitiated: false).start())
+                        strongSelf.fetchDisposable.set(messageMediaFileInteractiveFetched(context: item.context, message: item.message, file: telegramFile, userInitiated: false).startStrict())
                     }
                     
                     if let forwardInfo = item.message.forwardInfo, forwardInfo.flags.contains(.isImported) {
@@ -1141,11 +1150,11 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                             state = .progress(color: messageTheme.mediaOverlayControlColors.foregroundColor, lineWidth: nil, value: CGFloat(adjustedProgress), cancelEnabled: true, animateRotation: true)
                         }
                     case .Local:
-                        if isSecretMedia && self.secretProgressIcon != nil {
+                        if isSecretMedia {
                             if let (beginTime, timeout) = secretBeginTimeAndTimeout {
-                                state = .secretTimeout(color: messageTheme.mediaOverlayControlColors.foregroundColor, icon: secretProgressIcon, beginTime: beginTime, timeout: timeout, sparks: true)
+                                state = .secretTimeout(color: messageTheme.mediaOverlayControlColors.foregroundColor, icon: .flame, beginTime: beginTime, timeout: timeout, sparks: true)
                             } else {
-                                state = .customIcon(secretProgressIcon!)
+                                state = .staticTimeout
                             }
                         } else {
                             state = .none
@@ -1200,7 +1209,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
             }
             playbackStatusNode.frame = videoFrame.insetBy(dx: 1.5, dy: 1.5)
             
-            let status = messageFileMediaPlaybackStatus(context: item.context, file: file, message: item.message, isRecentActions: item.associatedData.isRecentActions, isGlobalSearch: false, isDownloadList: false)
+            let status = messageFileMediaPlaybackStatus(context: item.context, file: file, message: EngineMessage(item.message), isRecentActions: item.associatedData.isRecentActions, isGlobalSearch: false, isDownloadList: false)
             playbackStatusNode.status = status
             self.durationNode?.status = status
             |> map(Optional.init)
@@ -1256,6 +1265,9 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                                     for attribute in item.message.attributes {
                                         if let attribute = attribute as? ReplyMessageAttribute {
                                             item.controllerInteraction.navigateToMessage(item.message.id, attribute.messageId)
+                                            return
+                                        } else if let attribute = attribute as? ReplyStoryAttribute {
+                                            item.controllerInteraction.navigateToStory(item.message, attribute.storyId)
                                             return
                                         }
                                     }
@@ -1372,13 +1384,13 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     switch fetchStatus {
                         case .Fetching:
                             if item.message.flags.isSending {
-                                let _ = item.context.engine.messages.deleteMessagesInteractively(messageIds: [item.message.id], type: .forEveryone).start()
+                                let _ = item.context.engine.messages.deleteMessagesInteractively(messageIds: [item.message.id], type: .forEveryone).startStandalone()
                             } else {
                                 messageMediaFileCancelInteractiveFetch(context: item.context, messageId: item.message.id, file: file)
                             }
                         case .Remote, .Paused:
                             if let file = self.media {
-                                self.fetchDisposable.set(messageMediaFileInteractiveFetched(context: item.context, message: item.message, file: file, userInitiated: true).start())
+                                self.fetchDisposable.set(messageMediaFileInteractiveFetched(context: item.context, message: item.message, file: file, userInitiated: true).startStrict())
                             }
                         case .Local:
                             self.activateVideoPlayback()
@@ -1464,7 +1476,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                 if !self.infoBackgroundNode.alpha.isZero {
                     let _ = (item.context.sharedContext.mediaManager.globalMediaPlayerState
                     |> take(1)
-                    |> deliverOnMainQueue).start(next: { playlistStateAndType in
+                    |> deliverOnMainQueue).startStandalone(next: { playlistStateAndType in
                         var canPlay = true
                         if let (_, state, _) = playlistStateAndType {
                             switch state {
@@ -1531,7 +1543,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     let context = item.context
                     var replaceImpl: ((ViewController) -> Void)?
                     let controller = context.sharedContext.makePremiumDemoController(context: context, subject: .voiceToText, action: {
-                        let controller = context.sharedContext.makePremiumIntroController(context: context, source: .settings)
+                        let controller = context.sharedContext.makePremiumIntroController(context: context, source: .settings, forceDark: false, dismissed: nil)
                         replaceImpl?(controller)
                     })
                     replaceImpl = { [weak controller] c in
@@ -1539,7 +1551,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                     }
                     item.controllerInteraction.navigationController()?.pushViewController(controller, animated: true)
                     
-                    let _ = ApplicationSpecificNotice.incrementAudioTranscriptionSuggestion(accountManager: item.context.sharedContext.accountManager).start()
+                    let _ = ApplicationSpecificNotice.incrementAudioTranscriptionSuggestion(accountManager: item.context.sharedContext.accountManager).startStandalone()
                 }
                 return false })
             item.controllerInteraction.presentControllerInCurrent(tipController, nil)
@@ -1571,7 +1583,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                 self.requestUpdateLayout(true)
                 
                 self.transcribeDisposable = (item.context.engine.messages.transcribeAudio(messageId: item.message.id)
-                |> deliverOnMainQueue).start(next: { [weak self] result in
+                |> deliverOnMainQueue).startStrict(next: { [weak self] result in
                     guard let strongSelf = self else {
                         return
                     }
@@ -1601,7 +1613,9 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
         let duration: Double = 0.2
         
         node.alpha = 1.0
-        node.isHidden = false
+        if node.supernode == nil {
+            self.supernode?.insertSubnode(node, belowSubnode: self)
+        }
         
         self.alpha = 0.0
         self.layer.animateAlpha(from: 1.0, to: 0.0, duration: duration)
@@ -1715,7 +1729,7 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
         
         node.alpha = 0.0
         node.layer.animateAlpha(from: 1.0, to: 0.0, duration: duration, completion: { _ in
-            node.isHidden = true
+            node.removeFromSupernode()
         })
         node.waveformView?.layer.animateAlpha(from: 1.0, to: 0.0, duration: duration)
                 
@@ -1810,5 +1824,21 @@ class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
         }
         
         self.canAttachContent = false
+    }
+    
+    func targetForStoryTransition(id: StoryId) -> UIView? {
+        guard let item = self.item else {
+            return nil
+        }
+        for attribute in item.message.attributes {
+            if let attribute = attribute as? ReplyStoryAttribute {
+                if attribute.storyId == id {
+                    if let replyInfoNode = self.replyInfoNode {
+                        return replyInfoNode.mediaTransitionView()
+                    }
+                }
+            }
+        }
+        return nil
     }
 }

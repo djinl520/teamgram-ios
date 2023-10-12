@@ -2,7 +2,6 @@ import Foundation
 import UIKit
 import Display
 import SwiftSignalKit
-import Postbox
 import TelegramCore
 import LegacyComponents
 import TelegramPresentationData
@@ -220,6 +219,7 @@ public func deleteAccountOptionsController(context: AccountContext, navigationCo
                 let controller = PremiumLimitScreen(context: context, subject: .accounts, count: Int32(count), action: {
                     let controller = PremiumIntroScreen(context: context, source: .accounts)
                     replaceImpl?(controller)
+                    return true
                 })
                 replaceImpl = { [weak controller] c in
                     controller?.replace(with: c)
@@ -322,7 +322,7 @@ public func deleteAccountOptionsController(context: AccountContext, navigationCo
         
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         
-        let supportPeer = Promise<PeerId?>()
+        let supportPeer = Promise<EnginePeer.Id?>()
         supportPeer.set(context.engine.peers.supportPeerId())
         
         var faqUrl = presentationData.strings.Settings_FAQ_URL

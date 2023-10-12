@@ -109,7 +109,7 @@ private final class ContentNode: ASDisplayNode {
                         strongSelf.updateImage(image: image, size: size, spacing: spacing)
                     }
                 })
-                self.disposable = disposable
+                self.disposable = disposable.strict()
             } else {
                 let image = generateImage(size, rotatedContext: { size, context in
                     context.clear(CGRect(origin: CGPoint(), size: size))
@@ -277,10 +277,14 @@ public final class AnimatedAvatarSetNode: ASDisplayNode {
             guard let itemNode = self.contentNodes.removeValue(forKey: key) else {
                 continue
             }
-            itemNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, removeOnCompletion: false, completion: { [weak itemNode] _ in
-                itemNode?.removeFromSupernode()
-            })
-            itemNode.layer.animateScale(from: 1.0, to: 0.1, duration: 0.2, removeOnCompletion: false)
+            if animated {
+                itemNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, removeOnCompletion: false, completion: { [weak itemNode] _ in
+                    itemNode?.removeFromSupernode()
+                })
+                itemNode.layer.animateScale(from: 1.0, to: 0.1, duration: 0.2, removeOnCompletion: false)
+            } else {
+                itemNode.removeFromSupernode()
+            }
         }
         
         return CGSize(width: contentWidth, height: contentHeight)
@@ -338,7 +342,7 @@ public final class AnimatedAvatarSetView: UIView {
                             strongSelf.updateImage(image: image, size: size, spacing: spacing)
                         }
                     })
-                    self.disposable = disposable
+                    self.disposable = disposable.strict()
                 } else {
                     let image = generateImage(size, rotatedContext: { size, context in
                         context.clear(CGRect(origin: CGPoint(), size: size))

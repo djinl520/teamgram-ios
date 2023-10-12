@@ -158,6 +158,9 @@ public final class WriteBuffer: MemoryBuffer {
         if self.offset + length > self.capacity {
             self.capacity = self.offset + length + 256
             if self.length == 0 {
+                if self.freeWhenDone {
+                    free(self.memory)
+                }
                 self.memory = malloc(self.capacity)!
             } else {
                 self.memory = realloc(self.memory, self.capacity)
@@ -173,6 +176,9 @@ public final class WriteBuffer: MemoryBuffer {
         if self.offset + length > self.capacity {
             self.capacity = self.offset + length + 256
             if self.length == 0 {
+                if self.freeWhenDone {
+                    free(self.memory)
+                }
                 self.memory = malloc(self.capacity)!
             } else {
                 self.memory = realloc(self.memory, self.capacity)
@@ -206,6 +212,14 @@ public final class ReadBuffer: MemoryBuffer {
     public func read(_ data: UnsafeMutableRawPointer, offset: Int, length: Int) {
         memcpy(data + offset, self.memory.advanced(by: self.offset), length)
         self.offset += length
+    }
+    
+    public func readData(length: Int) -> Data {
+        var result = Data(count: length)
+        result.withUnsafeMutableBytes { buffer in
+            self.read(buffer.baseAddress!, offset: 0, length: length)
+        }
+        return result
     }
     
     public func skip(_ length: Int) {
@@ -1495,7 +1509,9 @@ public final class PostboxDecoder {
             var objectLength: Int32 = 0
             memcpy(&objectLength, self.buffer.memory + self.offset, 4)
             if objectLength < 0 || objectLength > 2 * 1024 * 1024 {
-                preconditionFailure()
+                assertionFailure()
+                self.offset = 0
+                break
             }
 
             let innerBuffer = ReadBuffer(memory: self.buffer.memory + (self.offset + 4), length: Int(objectLength), freeWhenDone: false)
