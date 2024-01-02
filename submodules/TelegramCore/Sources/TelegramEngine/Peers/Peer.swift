@@ -505,6 +505,26 @@ public extension EnginePeer {
         }
         return false
     }
+    
+    var nameColor: PeerNameColor? {
+        return self._asPeer().nameColor
+    }
+    
+    var profileColor: PeerNameColor? {
+        return self._asPeer().profileColor
+    }
+    
+    var emojiStatus: PeerEmojiStatus? {
+        return self._asPeer().emojiStatus
+    }
+    
+    var backgroundEmojiId: Int64? {
+        return self._asPeer().backgroundEmojiId
+    }
+    
+    var profileBackgroundEmojiId: Int64? {
+        return self._asPeer().profileBackgroundEmojiId
+    }
 }
 
 public extension EnginePeer {

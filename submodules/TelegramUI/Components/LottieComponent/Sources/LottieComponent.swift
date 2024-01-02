@@ -233,14 +233,14 @@ public final class LottieComponent: Component {
             }
         }
         
-        public func playOnce(delay: Double = 0.0, completion: (() -> Void)? = nil) {
+        public func playOnce(delay: Double = 0.0, force: Bool = false,  completion: (() -> Void)? = nil) {
             self.playOnceCompletion = completion
             
             guard let _ = self.animationInstance, let animationFrameRange = self.animationFrameRange else {
                 self.scheduledPlayOnce = true
                 return
             }
-            if !self.isEffectivelyVisible {
+            if !self.isEffectivelyVisible && !force {
                 self.scheduledPlayOnce = true
                 return
             }
@@ -263,23 +263,23 @@ public final class LottieComponent: Component {
                     
                     self.currentFrameStartTime = CACurrentMediaTime()
                     if self.displayLink == nil {
-                        self.displayLink = SharedDisplayLinkDriver.shared.add(needsHighestFramerate: false, { [weak self] in
+                        self.displayLink = SharedDisplayLinkDriver.shared.add { [weak self] _ in
                             guard let self else {
                                 return
                             }
                             self.advanceIfNeeded()
-                        })
+                        }
                     }
                 })
             } else {
                 self.currentFrameStartTime = CACurrentMediaTime()
                 if self.displayLink == nil {
-                    self.displayLink = SharedDisplayLinkDriver.shared.add(needsHighestFramerate: false, { [weak self] in
+                    self.displayLink = SharedDisplayLinkDriver.shared.add { [weak self] _ in
                         guard let self else {
                             return
                         }
                         self.advanceIfNeeded()
-                    })
+                    }
                 }
             }
         }

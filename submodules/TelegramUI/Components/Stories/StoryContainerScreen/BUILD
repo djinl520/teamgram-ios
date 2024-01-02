@@ -91,8 +91,10 @@ swift_library(
         "//submodules/TelegramUI/Components/TabSelectorComponent",
         "//submodules/TelegramUI/Components/OptionButtonComponent",
         "//submodules/TelegramUI/Components/EmojiTextAttachmentView",
+        "//submodules/Components/BalancedTextComponent",
         "//submodules/AnimatedCountLabelNode",
         "//submodules/StickerResources",
+        "//submodules/TelegramUI/Components/Stories/ForwardInfoPanelComponent"
     ],
     visibility = [
         "//visibility:public",

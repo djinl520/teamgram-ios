@@ -183,6 +183,7 @@ public func accountWithId(accountManager: AccountManager<TelegramAccountManagerT
         seedConfiguration: telegramPostboxSeedConfiguration,
         encryptionParameters: encryptionParameters,
         timestampForAbsoluteTimeBasedOperations: Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970),
+        isMainProcess: !supplementary,
         isTemporary: false,
         isReadOnly: false,
         useCopy: false,
@@ -1152,7 +1153,7 @@ public class Account {
             pendingMessageManager?.updatePendingMessageIds(view.ids)
         }))
         
-        self.managedOperationsDisposable.add(managedSecretChatOutgoingOperations(auxiliaryMethods: auxiliaryMethods, postbox: self.postbox, network: self.network).start())
+        self.managedOperationsDisposable.add(managedSecretChatOutgoingOperations(auxiliaryMethods: auxiliaryMethods, postbox: self.postbox, network: self.network, accountPeerId: peerId, mode: .all).start())
         self.managedOperationsDisposable.add(managedCloudChatRemoveMessagesOperations(postbox: self.postbox, network: self.network, stateManager: self.stateManager).start())
         self.managedOperationsDisposable.add(managedAutoremoveMessageOperations(network: self.network, postbox: self.postbox, isRemove: true).start())
         self.managedOperationsDisposable.add(managedAutoremoveMessageOperations(network: self.network, postbox: self.postbox, isRemove: false).start())
@@ -1165,38 +1166,38 @@ public class Account {
         let extractedExpr1: [Signal<AccountRunningImportantTasks, NoError>] = [
             managedSynchronizeChatInputStateOperations(postbox: self.postbox, network: self.network) |> map { inputStates in
                 if inputStates {
-                    print("inputStates: true")
+                    //print("inputStates: true")
                 }
                 return inputStates ? AccountRunningImportantTasks.other : []
             },
             self.pendingMessageManager.hasPendingMessages |> map { hasPendingMessages in
                 if !hasPendingMessages.isEmpty {
-                    print("hasPendingMessages: true")
+                    //print("hasPendingMessages: true")
                 }
                 return !hasPendingMessages.isEmpty ? AccountRunningImportantTasks.pendingMessages : []
             },
             (self.pendingStoryManager?.hasPending ?? .single(false)) |> map { hasPending in
                 if hasPending {
-                    print("hasPending: true")
+                    //print("hasPending: true")
                 }
                 return hasPending ? AccountRunningImportantTasks.pendingMessages : []
             },
             self.pendingUpdateMessageManager.updatingMessageMedia |> map { updatingMessageMedia in
                 if !updatingMessageMedia.isEmpty {
-                    print("updatingMessageMedia: true")
+                    //print("updatingMessageMedia: true")
                 }
                 return !updatingMessageMedia.isEmpty ? AccountRunningImportantTasks.pendingMessages : []
             },
             self.pendingPeerMediaUploadManager.uploadingPeerMedia |> map { uploadingPeerMedia in
                 if !uploadingPeerMedia.isEmpty {
-                    print("uploadingPeerMedia: true")
+                    //print("uploadingPeerMedia: true")
                 }
                 return !uploadingPeerMedia.isEmpty ? AccountRunningImportantTasks.pendingMessages : []
             },
             self.accountPresenceManager.isPerformingUpdate() |> map { presenceUpdate in
                 if presenceUpdate {
-                    print("accountPresenceManager isPerformingUpdate: true")
-                    return []
+                    //print("accountPresenceManager isPerformingUpdate: true")
+                    //return []
                 }
                 return presenceUpdate ? AccountRunningImportantTasks.other : []
             },
@@ -1445,6 +1446,7 @@ public func standaloneStateManager(
         seedConfiguration: telegramPostboxSeedConfiguration,
         encryptionParameters: encryptionParameters,
         timestampForAbsoluteTimeBasedOperations: Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970),
+        isMainProcess: false,
         isTemporary: false,
         isReadOnly: false,
         useCopy: false,
@@ -1522,7 +1524,10 @@ public func standaloneStateManager(
                                 |> map { network -> AccountStateManager? in
                                     Logger.shared.log("StandaloneStateManager", "received network")
                                     
-                                    postbox.mediaBox.fetchResource = { resource, intervals, parameters -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError> in
+                                    postbox.mediaBox.fetchResource = { [weak postbox] resource, intervals, parameters -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError> in
+                                        guard let postbox = postbox else {
+                                            return .never()
+                                        }
                                         if let result = auxiliaryMethods.fetchResource(
                                             postbox,
                                             resource,

@@ -69,9 +69,12 @@ public enum ContactMultiselectionControllerMode {
     case peerSelection(searchChatList: Bool, searchGroups: Bool, searchChannels: Bool)
     case channelCreation
     case chatSelection(ChatSelection)
+    case premiumGifting
+    case requestedUsersSelection
 }
 
 public enum ContactListFilter {
+    case excludeWithoutPhoneNumbers
     case excludeSelf
     case exclude([EnginePeer.Id])
     case disable([EnginePeer.Id])

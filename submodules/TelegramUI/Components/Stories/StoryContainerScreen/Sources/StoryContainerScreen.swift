@@ -92,6 +92,8 @@ private final class MuteMonitor {
 private final class StoryLongPressRecognizer: UILongPressGestureRecognizer {
     var shouldBegin: ((UITouch) -> Bool)?
     var updateIsTracking: ((CGPoint?) -> Void)?
+    var updatePanMove: ((CGPoint, CGPoint) -> Void)?
+    var updatePanEnded: (() -> Void)?
     
     override var state: UIGestureRecognizer.State {
         didSet {
@@ -109,6 +111,8 @@ private final class StoryLongPressRecognizer: UILongPressGestureRecognizer {
     
     private var isTracking: Bool = false
     private var isValidated: Bool = false
+    
+    private var initialLocation: CGPoint?
     
     override func reset() {
         super.reset()
@@ -134,9 +138,32 @@ private final class StoryLongPressRecognizer: UILongPressGestureRecognizer {
             
             if !self.isTracking {
                 self.isTracking = true
-                self.updateIsTracking?(touches.first?.location(in: self.view))
+                self.initialLocation = touches.first?.location(in: self.view)
+                self.updateIsTracking?(initialLocation)
             }
         }
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        if self.isValidated {
+            super.touchesMoved(touches, with: event)
+            
+            if let location = touches.first?.location(in: self.view), let initialLocation = self.initialLocation {
+                self.updatePanMove?(initialLocation, CGPoint(x: location.x - initialLocation.x, y: location.y - initialLocation.y))
+            }
+        }
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        
+        self.updatePanEnded?()
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        
+        self.updatePanEnded?()
     }
 }
 
@@ -392,8 +419,13 @@ private final class StoryContainerScreenComponent: Component {
         var longPressRecognizer: StoryLongPressRecognizer?
         
         private var pendingNavigationToItemId: (peerId: EnginePeer.Id, id: Int32)?
+                
+        private let interactionGuide = ComponentView<Empty>()
+        private var isDisplayingInteractionGuide: Bool = false
+        private var displayInteractionGuideDisposable: Disposable?
         
-        private var didDisplayReactionTooltip: Bool = false
+        private var previousSeekTime: Double?
+        private var initialSeekTimestamp: Double?
         
         override init(frame: CGRect) {
             self.backgroundLayer = SimpleLayer()
@@ -416,6 +448,9 @@ private final class StoryContainerScreenComponent: Component {
             
             let horizontalPanRecognizer = InteractiveTransitionGestureRecognizer(target: self, action: #selector(self.panGesture(_:)), allowedDirections: { [weak self] point in
                 guard let self, let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id], let itemSetComponentView = itemSetView.view.view as? StoryItemSetContainerComponent.View else {
+                    return []
+                }
+                if self.isDisplayingInteractionGuide {
                     return []
                 }
                 if let environment = self.environment, case .regular = environment.metrics.widthClass {
@@ -466,6 +501,60 @@ private final class StoryContainerScreenComponent: Component {
                     }
                 }
             }
+            longPressRecognizer.updatePanMove = { [weak self] initialLocation, translation in
+                guard let self, self.itemSetPanState?.didBegin == false else {
+                    return
+                }
+                guard let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id], let itemSetComponentView = itemSetView.view.view as? StoryItemSetContainerComponent.View else {
+                    return
+                }
+                guard let visibleItemView = itemSetComponentView.visibleItems[slice.item.storyItem.id]?.view.view as? StoryItemContentComponent.View else {
+                    return
+                }
+                
+                var apply = true
+                let currentTime = CACurrentMediaTime()
+                if let previousTime = self.previousSeekTime, currentTime - previousTime < 0.15 {
+                    apply = false
+                }
+                if apply {
+                    self.previousSeekTime = currentTime
+                }
+                
+                let initialSeekTimestamp: Double
+                if let current = self.initialSeekTimestamp {
+                    initialSeekTimestamp = current
+                } else {
+                    initialSeekTimestamp = visibleItemView.effectiveTimestamp
+                    self.initialSeekTimestamp = initialSeekTimestamp
+                }
+                
+                let duration = visibleItemView.effectiveDuration
+                let timestamp: Double
+                if translation.x > 0.0 {
+                    let fraction = translation.x / (self.bounds.width / 2.0)
+                    timestamp = initialSeekTimestamp + duration * fraction
+                } else {
+                    let fraction = translation.x / (self.bounds.width / 2.0)
+                    timestamp = initialSeekTimestamp + duration * fraction
+                }
+                visibleItemView.seekTo(max(0.0, min(duration, timestamp)), apply: apply)
+            }
+            longPressRecognizer.updatePanEnded = { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.initialSeekTimestamp = nil
+                self.previousSeekTime = nil
+                
+                guard let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id], let itemSetComponentView = itemSetView.view.view as? StoryItemSetContainerComponent.View else {
+                    return
+                }
+                guard let visibleItemView = itemSetComponentView.visibleItems[slice.item.storyItem.id]?.view.view as? StoryItemContentComponent.View else {
+                    return
+                }
+                visibleItemView.seekEnded()
+            }
             longPressRecognizer.shouldBegin = { [weak self] touch in
                 guard let self else {
                     return false
@@ -488,6 +577,9 @@ private final class StoryContainerScreenComponent: Component {
             pinchRecognizer.delegate = self
             pinchRecognizer.shouldBegin = { [weak self] pinchLocation in
                 guard let self else {
+                    return false
+                }
+                if self.isDisplayingInteractionGuide {
                     return false
                 }
                 if let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id] {
@@ -634,6 +726,7 @@ private final class StoryContainerScreenComponent: Component {
             self.headphonesDisposable?.dispose()
             self.stealthModeDisposable?.dispose()
             self.stealthModeTimer?.invalidate()
+            self.displayInteractionGuideDisposable?.dispose()
         }
         
         override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -919,17 +1012,15 @@ private final class StoryContainerScreenComponent: Component {
                     guard let self else {
                         return
                     }
-                    if !value {
+                    if !value && !self.isDisplayingInteractionGuide {
                         if let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id], let currentItemView = itemSetView.view.view as? StoryItemSetContainerComponent.View {
                             currentItemView.maybeDisplayReactionTooltip()
                         }
                     }
-                    
-                    self.didDisplayReactionTooltip = true
                 })
             })
         }
-        
+                
         func animateOut(completion: @escaping () -> Void) {
             self.isAnimatingOut = true
             
@@ -1029,15 +1120,16 @@ private final class StoryContainerScreenComponent: Component {
             }
         }
         
+        private var previousBackNavigationTime: Double?
         private func navigate(direction: StoryItemSetContainerComponent.NavigationDirection) {
-            guard let component = self.component, let environment = self.environment else {
+            guard let component = self.component, let environment = self.environment, let controller = environment.controller() as? StoryContainerScreen else {
                 return
             }
             
             if let stateValue = self.stateValue, let slice = stateValue.slice {
                 if case .next = direction, slice.nextItemId == nil, (slice.item.position == nil || slice.item.position == slice.totalCount - 1) {
                     if stateValue.nextSlice == nil {
-                        environment.controller()?.dismiss()
+                        controller.dismiss()
                     } else {
                         self.beginHorizontalPan(translation: CGPoint())
                         self.updateHorizontalPan(translation: CGPoint())
@@ -1047,7 +1139,17 @@ private final class StoryContainerScreenComponent: Component {
                     if stateValue.previousSlice == nil {
                         if let itemSetView = self.visibleItemSetViews[slice.peer.id] {
                             if let componentView = itemSetView.view.view as? StoryItemSetContainerComponent.View {
-                                componentView.rewindCurrentItem()
+                                if let customBackAction = controller.customBackAction {
+                                    let currentTime = CACurrentMediaTime()
+                                    if let previousBackNavigationTime = self.previousBackNavigationTime, currentTime - previousBackNavigationTime < 1.0 {
+                                        customBackAction()
+                                    } else {
+                                        self.previousBackNavigationTime = CACurrentMediaTime()
+                                        componentView.rewindCurrentItem()
+                                    }
+                                } else {
+                                    componentView.rewindCurrentItem()
+                                }
                             }
                         }
                     } else {
@@ -1109,6 +1211,22 @@ private final class StoryContainerScreenComponent: Component {
                         if update {
                             self.state?.updated(transition: .immediate)
                         }
+                    }
+                })
+                
+                let accountManager = component.context.sharedContext.accountManager
+                self.displayInteractionGuideDisposable = (ApplicationSpecificNotice.displayStoryInteractionGuide(accountManager: accountManager)
+                |> deliverOnMainQueue).startStrict(next: { [weak self] value in
+                    guard let self else {
+                        return
+                    }
+                    if !value {
+                        self.isDisplayingInteractionGuide = true
+                        if update {
+                            self.state?.updated(transition: .immediate)
+                        }
+                        
+                        let _ = ApplicationSpecificNotice.setDisplayStoryInteractionGuide(accountManager: accountManager).startStandalone()
                     }
                 })
                 
@@ -1288,6 +1406,9 @@ private final class StoryContainerScreenComponent: Component {
                 isProgressPaused = true
             }
             if self.pendingNavigationToItemId != nil {
+                isProgressPaused = true
+            }
+            if self.isDisplayingInteractionGuide {
                 isProgressPaused = true
             }
             
@@ -1698,6 +1819,38 @@ private final class StoryContainerScreenComponent: Component {
                 controller.presentationContext.containerLayoutUpdated(subLayout, transition: transition.containedViewLayoutTransition)
             }
             
+            if self.isDisplayingInteractionGuide {
+                let _ = self.interactionGuide.update(
+                    transition: .immediate,
+                    component: AnyComponent(
+                        StoryInteractionGuideComponent(
+                            context: component.context,
+                            theme: environment.theme,
+                            strings: environment.strings,
+                            action: { [weak self] in
+                                self?.isDisplayingInteractionGuide = false
+                                self?.state?.updated()
+                            }
+                        )
+                    ),
+                    environment: {},
+                    containerSize: availableSize
+                )
+                if let view = self.interactionGuide.view as? StoryInteractionGuideComponent.View {
+                    if view.superview == nil {
+                        self.addSubview(view)
+                        
+                        view.animateIn()
+                    }
+                    view.layer.zPosition = 1000.0
+                    view.frame = CGRect(origin: .zero, size: availableSize)
+                }
+            } else if let view = self.interactionGuide.view as? StoryInteractionGuideComponent.View, view.superview != nil {
+                view.animateOut(completion: {
+                    view.removeFromSuperview()
+                })
+            }
+            
             return availableSize
         }
     }
@@ -1796,6 +1949,8 @@ public class StoryContainerScreen: ViewControllerComponentContainer {
     public var focusedItem: Signal<StoryId?, NoError> {
         return self.focusedItemPromise.get()
     }
+    
+    public var customBackAction: (() -> Void)?
     
     public init(
         context: AccountContext,

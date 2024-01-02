@@ -70,7 +70,7 @@ public class LegacyMessageInputPanelNode: ASDisplayNode, TGCaptionPanelView {
     public var timerUpdated: ((NSNumber?) -> Void)?
     
     public func updateLayoutSize(_ size: CGSize, keyboardHeight: CGFloat, sideInset: CGFloat, animated: Bool) -> CGFloat {
-        return self.updateLayout(width: size.width, leftInset: sideInset, rightInset: sideInset, bottomInset: 0.0, keyboardHeight: keyboardHeight,  additionalSideInsets: UIEdgeInsets(), maxHeight: size.height, isSecondary: false, transition: animated ? .animated(duration: 0.2, curve: .easeInOut) : .immediate, metrics: LayoutMetrics(widthClass: .compact, heightClass: .compact), isMediaInputExpanded: false)
+        return self.updateLayout(width: size.width, leftInset: sideInset, rightInset: sideInset, bottomInset: 0.0, keyboardHeight: keyboardHeight,  additionalSideInsets: UIEdgeInsets(), maxHeight: size.height, isSecondary: false, transition: animated ? .animated(duration: 0.2, curve: .easeInOut) : .immediate, metrics: LayoutMetrics(widthClass: .compact, heightClass: .compact, orientation: nil), isMediaInputExpanded: false)
     }
     
     public func caption() -> NSAttributedString {
@@ -104,6 +104,12 @@ public class LegacyMessageInputPanelNode: ASDisplayNode, TGCaptionPanelView {
         }
         self.currentTimeout = timeout
         self.currentIsVideo = isVideo
+    }
+    
+    public func activateInput() {
+        if let view = self.inputPanel.view as? MessageInputPanelComponent.View {
+            view.activateInput()
+        }
     }
     
     public func dismissInput() -> Bool {
@@ -243,6 +249,7 @@ public class LegacyMessageInputPanelNode: ASDisplayNode, TGCaptionPanelView {
                     audioRecorder: nil,
                     videoRecordingStatus: nil,
                     isRecordingLocked: false,
+                    hasRecordedVideo: false,
                     recordedAudioPreview: nil,
                     hasRecordedVideoPreview: false,
                     wasRecordingDismissed: false,
@@ -255,6 +262,7 @@ public class LegacyMessageInputPanelNode: ASDisplayNode, TGCaptionPanelView {
                     customInputView: self.inputView,
                     forceIsEditing: false,
                     disabledPlaceholder: nil,
+                    header: nil,
                     isChannel: false,
                     storyItem: nil,
                     chatLocation: self.chatLocation

@@ -14,8 +14,13 @@ public enum InternalUpdaterError {
 public func requestUpdatesXml(account: Account, source: String) -> Signal<Data, InternalUpdaterError> {
     return TelegramEngine(account: account).peers.resolvePeerByName(name: source)
         |> castError(InternalUpdaterError.self)
-        |> map { peer -> Peer? in
-            return peer?._asPeer()
+        |> mapToSignal { result -> Signal<Peer?, InternalUpdaterError> in
+            switch result {
+            case .progress:
+                return .never()
+            case let .result(peer):
+                return .single(peer?._asPeer())
+            }
         }
         |> mapToSignal { peer -> Signal<Data, InternalUpdaterError> in
             if let peer = peer, let inputPeer = apiInputPeer(peer) {
@@ -25,7 +30,7 @@ public func requestUpdatesXml(account: Account, source: String) -> Signal<Data, 
                     |> mapToSignal { result in
                         switch result {
                         case let .channelMessages(_, _, _, _, apiMessages, _, apiChats, apiUsers):
-                            if let apiMessage = apiMessages.first, let storeMessage = StoreMessage(apiMessage: apiMessage, peerIsForum: peer.isForum) {
+                            if let apiMessage = apiMessages.first, let storeMessage = StoreMessage(apiMessage: apiMessage, accountPeerId: account.peerId, peerIsForum: peer.isForum) {
                                 
                                 var peers: [PeerId: Peer] = [:]
                                 for chat in apiChats {
@@ -79,8 +84,13 @@ public enum AppUpdateDownloadResult {
 public func downloadAppUpdate(account: Account, source: String, messageId: Int32) -> Signal<AppUpdateDownloadResult, InternalUpdaterError> {
     return TelegramEngine(account: account).peers.resolvePeerByName(name: source)
         |> castError(InternalUpdaterError.self)
-        |> mapToSignal { peer -> Signal<Peer?, InternalUpdaterError> in
-            return .single(peer?._asPeer())
+        |> mapToSignal { result -> Signal<Peer?, InternalUpdaterError> in
+            switch result {
+            case .progress:
+                return .never()
+            case let .result(peer):
+                return .single(peer?._asPeer())
+            }
         }
         |> mapToSignal { peer in
             if let peer = peer, let inputChannel = apiInputChannel(peer) {
@@ -103,7 +113,7 @@ public func downloadAppUpdate(account: Account, source: String, messageId: Int32
                             }
                             
                             let messageAndFile:(Message, TelegramMediaFile)? = apiMessages.compactMap { value in
-                                return StoreMessage(apiMessage: value, peerIsForum: peer.isForum)
+                                return StoreMessage(apiMessage: value, accountPeerId: account.peerId, peerIsForum: peer.isForum)
                                 }.compactMap { value in
                                     return locallyRenderedMessage(message: value, peers: peers)
                                 }.sorted(by: {

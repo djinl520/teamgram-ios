@@ -415,7 +415,7 @@ private final class ThemeSettingsThemeItemIconNode : ListViewItemNode {
                         }
                     }
                     if item.themeReference == nil {
-                        strongSelf.imageNode.backgroundColor = item.theme.actionSheet.opaqueItemBackgroundColor
+                        strongSelf.imageNode.backgroundColor = item.theme.list.plainBackgroundColor
                     }
                     
                     if updatedTheme || updatedSelected {
@@ -953,6 +953,10 @@ private class ChatThemeScreenNode: ViewControllerTracingNode, UIScrollViewDelega
         }
         
         self.updateCancelButton()
+    }
+    
+    deinit {
+        self.disposable.dispose()
     }
     
     private func enqueueTransition(_ transition: ThemeSettingsThemeItemNodeTransition) {
