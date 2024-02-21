@@ -144,7 +144,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
     public let openPeer: (EnginePeer, ChatControllerInteractionNavigateToPeer, MessageReference?, OpenPeerSource) -> Void
     public let openPeerMention: (String, Promise<Bool>?) -> Void
     public let openMessageContextMenu: (Message, Bool, ASDisplayNode, CGRect, UIGestureRecognizer?, CGPoint?) -> Void
-    public let updateMessageReaction: (Message, ChatControllerInteractionReaction) -> Void
+    public let updateMessageReaction: (Message, ChatControllerInteractionReaction, Bool, ContextExtractedContentContainingView?) -> Void
     public let openMessageReactionContextMenu: (Message, ContextExtractedContentContainingView, ContextGesture?, MessageReaction.Reaction) -> Void
     public let activateMessagePinch: (PinchSourceContainerNode) -> Void
     public let openMessageContextActions: (Message, ASDisplayNode, CGRect, ContextGesture?) -> Void
@@ -231,6 +231,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
     public let displayGiveawayParticipationStatus: (EngineMessage.Id) -> Void
     public let openPremiumStatusInfo: (EnginePeer.Id, UIView, Int64?, PeerNameColor) -> Void
     public let openRecommendedChannelContextMenu: (EnginePeer, UIView, ContextGesture?) -> Void
+    public let openGroupBoostInfo: (EnginePeer.Id?, Int) -> Void
     
     public let requestMessageUpdate: (MessageId, Bool) -> Void
     public let cancelInteractiveKeyboardGestures: () -> Void
@@ -267,7 +268,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
         openPeerMention: @escaping (String, Promise<Bool>?) -> Void,
         openMessageContextMenu: @escaping (Message, Bool, ASDisplayNode, CGRect, UIGestureRecognizer?, CGPoint?) -> Void,
         openMessageReactionContextMenu: @escaping (Message, ContextExtractedContentContainingView, ContextGesture?, MessageReaction.Reaction) -> Void,
-        updateMessageReaction: @escaping (Message, ChatControllerInteractionReaction) -> Void,
+        updateMessageReaction: @escaping (Message, ChatControllerInteractionReaction, Bool, ContextExtractedContentContainingView?) -> Void,
         activateMessagePinch: @escaping (PinchSourceContainerNode) -> Void,
         openMessageContextActions: @escaping (Message, ASDisplayNode, CGRect, ContextGesture?) -> Void,
         navigateToMessage: @escaping (MessageId, MessageId, NavigateToMessageParams) -> Void,
@@ -353,6 +354,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
         displayGiveawayParticipationStatus: @escaping (EngineMessage.Id) -> Void,
         openPremiumStatusInfo: @escaping (EnginePeer.Id, UIView, Int64?, PeerNameColor) -> Void,
         openRecommendedChannelContextMenu: @escaping (EnginePeer, UIView, ContextGesture?) -> Void,
+        openGroupBoostInfo: @escaping (EnginePeer.Id?, Int) -> Void,
         requestMessageUpdate: @escaping (MessageId, Bool) -> Void,
         cancelInteractiveKeyboardGestures: @escaping () -> Void,
         dismissTextInput: @escaping () -> Void,
@@ -455,6 +457,8 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
         self.displayGiveawayParticipationStatus = displayGiveawayParticipationStatus
         self.openPremiumStatusInfo = openPremiumStatusInfo
         self.openRecommendedChannelContextMenu = openRecommendedChannelContextMenu
+        self.openGroupBoostInfo = openGroupBoostInfo
+        
         self.requestMessageUpdate = requestMessageUpdate
         self.cancelInteractiveKeyboardGestures = cancelInteractiveKeyboardGestures
         self.dismissTextInput = dismissTextInput

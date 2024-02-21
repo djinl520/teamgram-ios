@@ -854,7 +854,7 @@ func chatForumTopicMenuItems(context: AccountContext, peerId: PeerId, threadId: 
     }
 }
 
-public func savedMessagesPeerMenuItems(context: AccountContext, threadId: Int64, parentController: ViewController) -> Signal<[ContextMenuItem], NoError> {
+public func savedMessagesPeerMenuItems(context: AccountContext, threadId: Int64, parentController: ViewController, deletePeerChat: @escaping (EnginePeer.Id) -> Void) -> Signal<[ContextMenuItem], NoError> {
     let presentationData = context.sharedContext.currentPresentationData.with({ $0 })
     let strings = presentationData.strings
 
@@ -878,14 +878,25 @@ public func savedMessagesPeerMenuItems(context: AccountContext, threadId: Int64,
             |> deliverOnMainQueue).startStandalone(error: { error in
                 switch error {
                 case let .limitReached(count):
+                    var replaceImpl: ((ViewController) -> Void)?
                     let controller = PremiumLimitScreen(context: context, subject: .pinnedSavedPeers, count: Int32(count), action: {
+                        let controller = PremiumIntroScreen(context: context, source: .pinnedChats)
+                        replaceImpl?(controller)
                         return true
                     })
+                    replaceImpl = { [weak controller] c in
+                        controller?.replace(with: c)
+                    }
                     parentController?.push(controller)
                 default:
                     break
                 }
             })
+        })))
+        
+        items.append(.action(ContextMenuActionItem(text: strings.ChatList_Context_Delete, textColor: .destructive, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Delete"), color: theme.contextMenu.destructiveColor) }, action: { _, f in
+                deletePeerChat(PeerId(threadId))
+            f(.default)
         })))
         
         return .single(items)

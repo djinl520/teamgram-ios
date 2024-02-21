@@ -481,7 +481,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             
             var emojiFile: TelegramMediaFile?
             var emojiString: String?
-            if messageIsElligibleForLargeCustomEmoji(item.message) || messageIsElligibleForLargeEmoji(item.message) {
+            if messageIsEligibleForLargeCustomEmoji(item.message) || messageIsEligibleForLargeEmoji(item.message) {
                 emojiString = item.message.text
             }
             
@@ -1009,7 +1009,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             var edited = false
             var viewCount: Int? = nil
             var dateReplies = 0
-            var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeer: item.associatedData.accountPeer, message: item.message)
+            var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeerId: item.context.account.peerId, accountPeer: item.associatedData.accountPeer, message: item.message)
             if item.message.isRestricted(platform: "ios", contentSettings: item.context.currentContentSettings.with { $0 }) {
                 dateReactionsAndPeers = ([], [])
             }
@@ -1042,13 +1042,15 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                 layoutInput: .standalone(reactionSettings: shouldDisplayInlineDateReactions(message: item.message, isPremium: item.associatedData.isPremium, forceInline: item.associatedData.forceInlineReactions) ? ChatMessageDateAndStatusNode.StandaloneReactionSettings() : nil),
                 constrainedSize: CGSize(width: params.width, height: CGFloat.greatestFiniteMagnitude),
                 availableReactions: item.associatedData.availableReactions,
+                savedMessageTags: item.associatedData.savedMessageTags,
                 reactions: dateReactionsAndPeers.reactions,
                 reactionPeers: dateReactionsAndPeers.peers,
                 displayAllReactionPeers: item.message.id.peerId.namespace == Namespaces.Peer.CloudUser,
+                areReactionsTags: item.message.areReactionsTags(accountPeerId: item.context.account.peerId),
                 replyCount: dateReplies,
                 isPinned: item.message.tags.contains(.pinned) && !item.associatedData.isInPinnedListMode && !isReplyThread,
                 hasAutoremove: item.message.isSelfExpiring,
-                canViewReactionList: canViewMessageReactionList(message: item.message),
+                canViewReactionList: canViewMessageReactionList(message: item.message, isInline: item.associatedData.isInline),
                 animationCache: item.controllerInteraction.presentationContext.animationCache,
                 animationRenderer: item.controllerInteraction.presentationContext.animationRenderer
             ))
@@ -1240,9 +1242,9 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             
             let reactions: ReactionsMessageAttribute
             if shouldDisplayInlineDateReactions(message: item.message, isPremium: item.associatedData.isPremium, forceInline: item.associatedData.forceInlineReactions) {
-                reactions = ReactionsMessageAttribute(canViewList: false, reactions: [], recentPeers: [])
+                reactions = ReactionsMessageAttribute(canViewList: false, isTags: false, reactions: [], recentPeers: [])
             } else {
-                reactions = mergedMessageReactions(attributes: item.message.attributes) ?? ReactionsMessageAttribute(canViewList: false, reactions: [], recentPeers: [])
+                reactions = mergedMessageReactions(attributes: item.message.attributes, isTags: item.message.areReactionsTags(accountPeerId: item.context.account.peerId)) ?? ReactionsMessageAttribute(canViewList: false, isTags: false, reactions: [], recentPeers: [])
             }
             var reactionButtonsFinalize: ((CGFloat) -> (CGSize, (_ animation: ListViewItemUpdateAnimation) -> ChatMessageReactionButtonsNode))?
             if !reactions.reactions.isEmpty {
@@ -1254,8 +1256,10 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                     presentationData: item.presentationData,
                     presentationContext: item.controllerInteraction.presentationContext,
                     availableReactions: item.associatedData.availableReactions,
+                    savedMessageTags: item.associatedData.savedMessageTags,
                     reactions: reactions,
                     message: item.message,
+                    associatedData: item.associatedData,
                     accountPeer: item.associatedData.accountPeer,
                     isIncoming: item.message.effectivelyIncoming(item.context.account.peerId),
                     constrainedWidth: maxReactionsWidth
@@ -1679,11 +1683,11 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                         }
                         if reactionButtonsNode !== strongSelf.reactionButtonsNode {
                             strongSelf.reactionButtonsNode = reactionButtonsNode
-                            reactionButtonsNode.reactionSelected = { value in
+                            reactionButtonsNode.reactionSelected = { value, sourceView in
                                 guard let strongSelf = weakSelf.value, let item = strongSelf.item else {
                                     return
                                 }
-                                item.controllerInteraction.updateMessageReaction(item.message, .reaction(value))
+                                item.controllerInteraction.updateMessageReaction(item.message, .reaction(value), false, sourceView)
                             }
                             reactionButtonsNode.openReactionPreview = { gesture, sourceView, value in
                                 guard let strongSelf = weakSelf.value, let item = strongSelf.item else {
@@ -1776,7 +1780,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                         f()
                     case let .openContextMenu(openContextMenu):
                         if canAddMessageReactions(message: item.message) {
-                            item.controllerInteraction.updateMessageReaction(item.message, .default)
+                            item.controllerInteraction.updateMessageReaction(item.message, .default, false, nil)
                         } else {
                             item.controllerInteraction.openMessageContextMenu(openContextMenu.tapMessage, openContextMenu.selectAll, self, openContextMenu.subFrame, nil, nil)
                         }
@@ -1785,7 +1789,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                     item.controllerInteraction.clickThroughMessage()
                 } else if case .doubleTap = gesture {
                     if canAddMessageReactions(message: item.message) {
-                        item.controllerInteraction.updateMessageReaction(item.message, .default)
+                        item.controllerInteraction.updateMessageReaction(item.message, .default, false, nil)
                     }
                 }
             }
@@ -2958,7 +2962,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
         let context = UIGraphicsGetCurrentContext()!
         
         context.translateBy(x: -self.imageNode.frame.minX, y: -self.imageNode.frame.minY)
-        self.view.layer.render(in: context)
+        self.contextSourceNode.contentNode.view.layer.render(in: context)
         
         let image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()

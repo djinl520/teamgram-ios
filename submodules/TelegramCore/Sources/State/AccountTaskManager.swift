@@ -108,6 +108,7 @@ final class AccountTaskManager {
                     tasks.add(managedGroupPhotoEmoji(postbox: self.stateManager.postbox, network: self.stateManager.network).start())
                     tasks.add(managedBackgroundIconEmoji(postbox: self.stateManager.postbox, network: self.stateManager.network).start())
                     tasks.add(managedRecentReactions(postbox: self.stateManager.postbox, network: self.stateManager.network).start())
+                    tasks.add(managedDefaultTagReactions(postbox: self.stateManager.postbox, network: self.stateManager.network).start())
                     tasks.add(_internal_loadedStickerPack(postbox: self.stateManager.postbox, network: self.stateManager.network, reference: .iconStatusEmoji, forceActualized: true).start())
                     tasks.add(_internal_loadedStickerPack(postbox: self.stateManager.postbox, network: self.stateManager.network, reference: .iconChannelStatusEmoji, forceActualized: true).start())
                     tasks.add(managedDisabledChannelStatusIconEmoji(postbox: self.stateManager.postbox, network: self.stateManager.network).start())

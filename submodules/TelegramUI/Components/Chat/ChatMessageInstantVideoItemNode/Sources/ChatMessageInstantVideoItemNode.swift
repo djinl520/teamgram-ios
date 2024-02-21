@@ -595,9 +595,9 @@ public class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureReco
             
             let reactions: ReactionsMessageAttribute
             if shouldDisplayInlineDateReactions(message: item.message, isPremium: item.associatedData.isPremium, forceInline: item.associatedData.forceInlineReactions) {
-                reactions = ReactionsMessageAttribute(canViewList: false, reactions: [], recentPeers: [])
+                reactions = ReactionsMessageAttribute(canViewList: false, isTags: false, reactions: [], recentPeers: [])
             } else {
-                reactions = mergedMessageReactions(attributes: item.message.attributes) ?? ReactionsMessageAttribute(canViewList: false, reactions: [], recentPeers: [])
+                reactions = mergedMessageReactions(attributes: item.message.attributes, isTags: item.message.areReactionsTags(accountPeerId: item.context.account.peerId)) ?? ReactionsMessageAttribute(canViewList: false, isTags: false, reactions: [], recentPeers: [])
             }
             
             var reactionButtonsFinalize: ((CGFloat) -> (CGSize, (_ animation: ListViewItemUpdateAnimation) -> ChatMessageReactionButtonsNode))?
@@ -610,8 +610,10 @@ public class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureReco
                     presentationData: item.presentationData,
                     presentationContext: item.controllerInteraction.presentationContext,
                     availableReactions: item.associatedData.availableReactions,
+                    savedMessageTags: item.associatedData.savedMessageTags,
                     reactions: reactions,
                     message: item.message,
+                    associatedData: item.associatedData,
                     accountPeer: item.associatedData.accountPeer,
                     isIncoming: item.message.effectivelyIncoming(item.context.account.peerId),
                     constrainedWidth: maxReactionsWidth
@@ -828,11 +830,11 @@ public class ChatMessageInstantVideoItemNode: ChatMessageItemView, UIGestureReco
                             }
                             if reactionButtonsNode !== strongSelf.reactionButtonsNode {
                                 strongSelf.reactionButtonsNode = reactionButtonsNode
-                                reactionButtonsNode.reactionSelected = { value in
+                                reactionButtonsNode.reactionSelected = { value, sourceView in
                                     guard let strongSelf = weakSelf.value, let item = strongSelf.item else {
                                         return
                                     }
-                                    item.controllerInteraction.updateMessageReaction(item.message, .reaction(value))
+                                    item.controllerInteraction.updateMessageReaction(item.message, .reaction(value), false, sourceView)
                                 }
                                 reactionButtonsNode.openReactionPreview = { gesture, sourceNode, value in
                                     guard let strongSelf = weakSelf.value, let item = strongSelf.item else {

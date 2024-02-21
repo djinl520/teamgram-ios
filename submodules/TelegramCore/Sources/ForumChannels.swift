@@ -972,8 +972,8 @@ func applyLoadMessageHistoryThreadsResults(accountPeerId: PeerId, transaction: T
             
             transaction.setMessageHistoryThreadInfo(peerId: result.peerId, threadId: item.threadId, info: info)
             
-            transaction.replaceMessageTagSummary(peerId: result.peerId, threadId: item.threadId, tagMask: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud, count: item.unreadMentionsCount, maxId: item.topMessage)
-            transaction.replaceMessageTagSummary(peerId: result.peerId, threadId: item.threadId, tagMask: .unseenReaction, namespace: Namespaces.Message.Cloud, count: item.unreadReactionsCount, maxId: item.topMessage)
+            transaction.replaceMessageTagSummary(peerId: result.peerId, threadId: item.threadId, tagMask: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud, customTag: nil, count: item.unreadMentionsCount, maxId: item.topMessage)
+            transaction.replaceMessageTagSummary(peerId: result.peerId, threadId: item.threadId, tagMask: .unseenReaction, namespace: Namespaces.Message.Cloud, customTag: nil, count: item.unreadReactionsCount, maxId: item.topMessage)
             
             if item.topMessage != 0 {
                 transaction.removeHole(peerId: result.peerId, threadId: item.threadId, namespace: Namespaces.Message.Cloud, space: .everywhere, range: item.topMessage ... (Int32.max - 1))
@@ -1136,7 +1136,10 @@ public func _internal_searchForumTopics(account: Account, peerId: EnginePeer.Id,
                     hasFailed: false,
                     isContact: false,
                     autoremoveTimeout: nil,
-                    storyStats: nil
+                    storyStats: nil,
+                    displayAsTopicList: false,
+                    isPremiumRequiredToMessage: false,
+                    mediaDraftContentType: nil
                 ))
             }
             

@@ -298,8 +298,12 @@ public func mediaContentKind(_ media: EngineMedia, message: EngineMessage? = nil
         switch expiredMedia.data {
         case .image:
             return .expiredImage
-        case .file, .videoMessage, .voiceMessage:
+        case .file:
             return .expiredVideo
+        case .voiceMessage:
+            return .expiredVoiceMessage
+        case .videoMessage:
+            return .expiredVideoMessage
         }
     case .image:
         return .image
@@ -374,7 +378,7 @@ public func mediaContentKind(_ media: EngineMedia, message: EngineMessage? = nil
         }
     case .story:
         return .story
-    case .giveaway:
+    case .giveaway, .giveawayResults:
         return .giveaway
     case let .webpage(webpage):
         if let message, message.text.isEmpty, case let .Loaded(content) = webpage.content {

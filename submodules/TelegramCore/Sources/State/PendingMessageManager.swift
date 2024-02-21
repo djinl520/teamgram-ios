@@ -58,6 +58,7 @@ public enum PendingMessageFailureReason {
     case tooMuchScheduled
     case voiceMessagesForbidden
     case sendingTooFast
+    case nonPremiumMessagesForbidden
 }
 
 func sendMessageReasonForError(_ error: String) -> PendingMessageFailureReason? {
@@ -75,6 +76,8 @@ func sendMessageReasonForError(_ error: String) -> PendingMessageFailureReason? 
         return .tooMuchScheduled
     } else if error.hasPrefix("VOICE_MESSAGES_FORBIDDEN") {
         return .voiceMessagesForbidden
+    } else if error.hasPrefix("PRIVACY_PREMIUM_REQUIRED") {
+        return .nonPremiumMessagesForbidden
     } else {
         return nil
     }
@@ -149,6 +152,10 @@ final class PendingMessageRequestDependencyTag: NetworkRequestDependencyTag {
     }
 }
 
+private final class CorrelationIdToSentMessageId {
+    var mapping: [Int64: MessageId] = [:]
+}
+
 public final class PendingMessageManager {
     private let network: Network
     private let postbox: Postbox
@@ -173,6 +180,8 @@ public final class PendingMessageManager {
     private var peerSummaryContexts: [PeerId: PeerPendingMessagesSummaryContext] = [:]
     
     var transformOutgoingMessageMedia: TransformOutgoingMessageMedia?
+    
+    private let correlationIdToSentMessageId: Atomic<CorrelationIdToSentMessageId> = Atomic(value: CorrelationIdToSentMessageId())
     
     init(network: Network, postbox: Postbox, accountPeerId: PeerId, auxiliaryMethods: AccountAuxiliaryMethods, stateManager: AccountStateManager, localInputActivityManager: PeerInputActivityManager, messageMediaPreuploadManager: MessageMediaPreuploadManager, revalidationContext: MediaReferenceRevalidationContext) {
         Logger.shared.log("PendingMessageManager", "create instance")
@@ -978,9 +987,9 @@ public final class PendingMessageManager {
                         
                         replyTo = .inputReplyToMessage(flags: replyFlags, replyToMsgId: replyMessageId, topMsgId: topMsgId, replyToPeerId: replyToPeerId, quoteText: quoteText, quoteEntities: quoteEntities, quoteOffset: quoteOffset)
                     } else if let replyToStoryId = replyToStoryId {
-                        if let inputUser = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputUser) {
+                        if let inputPeer = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputPeer) {
                             flags |= 1 << 0
-                            replyTo = .inputReplyToStory(userId: inputUser, storyId: replyToStoryId.id)
+                            replyTo = .inputReplyToStory(peer: inputPeer, storyId: replyToStoryId.id)
                         }
                     }
                     
@@ -1270,9 +1279,9 @@ public final class PendingMessageManager {
                             
                             replyTo = .inputReplyToMessage(flags: replyFlags, replyToMsgId: replyMessageId, topMsgId: message.threadId.flatMap(Int32.init(clamping:)), replyToPeerId: replyToPeerId, quoteText: quoteText, quoteEntities: quoteEntities, quoteOffset: quoteOffset)
                         } else if let replyToStoryId = replyToStoryId {
-                            if let inputUser = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputUser) {
+                            if let inputPeer = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputPeer) {
                                 flags |= 1 << 0
-                                replyTo = .inputReplyToStory(userId: inputUser, storyId: replyToStoryId.id)
+                                replyTo = .inputReplyToStory(peer: inputPeer, storyId: replyToStoryId.id)
                             }
                         }
                     
@@ -1335,9 +1344,9 @@ public final class PendingMessageManager {
                             
                             replyTo = .inputReplyToMessage(flags: replyFlags, replyToMsgId: replyMessageId, topMsgId: message.threadId.flatMap(Int32.init(clamping:)), replyToPeerId: replyToPeerId, quoteText: quoteText, quoteEntities: quoteEntities, quoteOffset: quoteOffset)
                         } else if let replyToStoryId = replyToStoryId {
-                            if let inputUser = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputUser) {
+                            if let inputPeer = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputPeer) {
                                 flags |= 1 << 0
-                                replyTo = .inputReplyToStory(userId: inputUser, storyId: replyToStoryId.id)
+                                replyTo = .inputReplyToStory(peer: inputPeer, storyId: replyToStoryId.id)
                             }
                         }
                     
@@ -1414,9 +1423,9 @@ public final class PendingMessageManager {
                             
                             replyTo = .inputReplyToMessage(flags: replyFlags, replyToMsgId: replyMessageId, topMsgId: message.threadId.flatMap(Int32.init(clamping:)), replyToPeerId: replyToPeerId, quoteText: quoteText, quoteEntities: quoteEntities, quoteOffset: quoteOffset)
                         } else if let replyToStoryId = replyToStoryId {
-                            if let inputUser = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputUser) {
+                            if let inputPeer = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputPeer) {
                                 flags |= 1 << 0
-                                replyTo = .inputReplyToStory(userId: inputUser, storyId: replyToStoryId.id)
+                                replyTo = .inputReplyToStory(peer: inputPeer, storyId: replyToStoryId.id)
                             }
                         }
                     
@@ -1429,9 +1438,9 @@ public final class PendingMessageManager {
                             let replyFlags: Int32 = 0
                             replyTo = .inputReplyToMessage(flags: replyFlags, replyToMsgId: replyMessageId, topMsgId: nil, replyToPeerId: nil, quoteText: nil, quoteEntities: nil, quoteOffset: nil)
                         } else if let replyToStoryId = replyToStoryId {
-                            if let inputUser = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputUser) {
+                            if let inputPeer = transaction.getPeer(replyToStoryId.peerId).flatMap(apiInputPeer) {
                                 flags |= 1 << 0
-                                replyTo = .inputReplyToStory(userId: inputUser, storyId: replyToStoryId.id)
+                                replyTo = .inputReplyToStory(peer: inputPeer, storyId: replyToStoryId.id)
                             } else {
                                 let replyFlags: Int32 = 0
                                 replyTo = .inputReplyToMessage(flags: replyFlags, replyToMsgId: 0, topMsgId: nil, replyToPeerId: nil, quoteText: nil, quoteEntities: nil, quoteOffset: nil)
@@ -1560,6 +1569,12 @@ public final class PendingMessageManager {
         var namespace = Namespaces.Message.Cloud
         if let apiMessage = apiMessage, let id = apiMessage.id(namespace: message.scheduleTime != nil && message.scheduleTime == apiMessage.timestamp ? Namespaces.Message.ScheduledCloud : Namespaces.Message.Cloud) {
             namespace = id.namespace
+            
+            if let attribute = message.attributes.first(where: { $0 is OutgoingMessageInfoAttribute }) as? OutgoingMessageInfoAttribute, let correlationId = attribute.correlationId {
+                self.correlationIdToSentMessageId.with { value in
+                    value.mapping[correlationId] = id
+                }
+            }
         }
         
         return applyUpdateMessage(postbox: postbox, stateManager: stateManager, message: message, cacheReferenceKey: content.cacheReferenceKey, result: result, accountPeerId: self.accountPeerId)
@@ -1583,6 +1598,20 @@ public final class PendingMessageManager {
             namespace = Namespaces.Message.ScheduledCloud
             if message.muted {
                 silent = true
+            }
+        }
+        
+        if messages.count == result.messages.count {
+            for i in 0 ..< messages.count {
+                let message = messages[i]
+                let apiMessage = result.messages[i]
+                if let id = apiMessage.id(namespace: message.scheduleTime != nil && message.scheduleTime == apiMessage.timestamp ? Namespaces.Message.ScheduledCloud : Namespaces.Message.Cloud) {
+                    if let attribute = message.attributes.first(where: { $0 is OutgoingMessageInfoAttribute }) as? OutgoingMessageInfoAttribute, let correlationId = attribute.correlationId {
+                        self.correlationIdToSentMessageId.with { value in
+                            value.mapping[correlationId] = id
+                        }
+                    }
+                }
             }
         }
         
@@ -1664,5 +1693,9 @@ public final class PendingMessageManager {
             
             return disposable
         }
+    }
+    
+    public func synchronouslyLookupCorrelationId(correlationId: Int64) -> MessageId? {
+        return self.correlationIdToSentMessageId.with { $0.mapping[correlationId] }
     }
 }

@@ -10,7 +10,6 @@ import TelegramPresentationData
 import AccountContext
 import PhotoResources
 import TelegramStringFormatting
-import RadialStatusNode
 import SemanticStatusNode
 import FileMediaResourceStatus
 import CheckNode
@@ -34,6 +33,7 @@ import ChatHistoryEntry
 import ChatMessageItemCommon
 import TelegramStringFormatting
 import AnimatedCountLabelNode
+import AudioWaveform
 
 private struct FetchControls {
     let fetch: (Bool) -> Void
@@ -353,7 +353,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: arguments.context.currentAppConfiguration.with { $0 })
         
         let transcriptionText = self.forcedAudioTranscriptionText ?? transcribedText(message: message)
-        if transcriptionText == nil {
+        if transcriptionText == nil && !arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
             if premiumConfiguration.audioTransciptionTrialCount > 0 {
                 if !arguments.associatedData.isPremium {
                     if self.presentAudioTranscriptionTooltip(finished: false) {
@@ -475,7 +475,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         strongSelf.transcribeDisposable?.dispose()
                         strongSelf.transcribeDisposable = nil
                         
-                        if let arguments = strongSelf.arguments, !arguments.associatedData.isPremium {
+                        if let arguments = strongSelf.arguments, !arguments.associatedData.isPremium && !arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
                             Queue.mainQueue().after(0.1, {
                                 let _ = strongSelf.presentAudioTranscriptionTooltip(finished: true)
                             })
@@ -771,6 +771,8 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         } else if arguments.incoming && isConsumed == false && arguments.associatedData.alwaysDisplayTranscribeButton.displayForNotConsumed {
                             displayTranscribe = true
                         }
+                    } else if arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
+                        displayTranscribe = true
                     }
                 }
                 
@@ -883,7 +885,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     }
                     var viewCount: Int?
                     var dateReplies = 0
-                    var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeer: arguments.associatedData.accountPeer, message: arguments.topMessage)
+                    var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeerId: arguments.context.account.peerId, accountPeer: arguments.associatedData.accountPeer, message: arguments.topMessage)
                     if arguments.topMessage.isRestricted(platform: "ios", contentSettings: arguments.context.currentContentSettings.with { $0 }) || arguments.presentationData.isPreview {
                         dateReactionsAndPeers = ([], [])
                     }
@@ -934,13 +936,15 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         layoutInput: statusLayoutInput,
                         constrainedSize: constrainedSize,
                         availableReactions: arguments.associatedData.availableReactions,
+                        savedMessageTags: arguments.associatedData.savedMessageTags,
                         reactions: dateReactionsAndPeers.reactions,
                         reactionPeers: dateReactionsAndPeers.peers,
                         displayAllReactionPeers: arguments.message.id.peerId.namespace == Namespaces.Peer.CloudUser,
+                        areReactionsTags: arguments.message.areReactionsTags(accountPeerId: arguments.context.account.peerId),
                         replyCount: dateReplies,
                         isPinned: arguments.isPinned && !arguments.associatedData.isInPinnedListMode,
                         hasAutoremove: arguments.message.isSelfExpiring,
-                        canViewReactionList: canViewMessageReactionList(message: arguments.message),
+                        canViewReactionList: canViewMessageReactionList(message: arguments.topMessage, isInline: arguments.associatedData.isInline),
                         animationCache: arguments.controllerInteraction.presentationContext.animationCache,
                         animationRenderer: arguments.controllerInteraction.presentationContext.animationRenderer
                     ))
@@ -1065,18 +1069,15 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                                 strongSelf.audioTranscriptionState = updatedAudioTranscriptionState
                             }
                                 
-                                /*switch updatedAudioTranscriptionState {
+                            switch updatedAudioTranscriptionState {
                                 case .expanded:
                                     info?.setInvertOffsetDirection()
                                 default:
-                                    break
-                                }
-                            } else if strongSelf.isWaitingForCollapse {
-                                strongSelf.isWaitingForCollapse = false
-                                info?.setInvertOffsetDirection()
-                            }*/
-                            
-                            info?.setInvertOffsetDirection()
+                                    if strongSelf.isWaitingForCollapse {
+                                        strongSelf.isWaitingForCollapse = false
+                                        info?.setInvertOffsetDirection()
+                                    }
+                            }
                             
                             if let consumableContentIcon = consumableContentIcon {
                                 if strongSelf.consumableContentNode.supernode == nil {

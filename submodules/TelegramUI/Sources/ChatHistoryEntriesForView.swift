@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Postbox
 import TelegramCore
 import TemporaryCachedPeerDataManager
@@ -7,14 +8,19 @@ import AccountContext
 import TelegramPresentationData
 import ChatHistoryEntry
 import ChatMessageItemCommon
+import TextFormat
+import Markdown
+import Display
 
 func chatHistoryEntriesForView(
+    context: AccountContext,
     location: ChatLocation,
     view: MessageHistoryView,
     includeUnreadEntry: Bool,
     includeEmptyEntry: Bool,
     includeChatInfoEntry: Bool,
     includeSearchEntry: Bool,
+    includeEmbeddedSavedChatInfo: Bool,
     reverse: Bool,
     groupMessages: Bool,
     reverseGroupedMessages: Bool,
@@ -72,6 +78,7 @@ func chatHistoryEntriesForView(
                 tags: [],
                 globalTags: [],
                 localTags: [],
+                customTags: [],
                 forwardInfo: nil,
                 author: channelPeer,
                 text: "",
@@ -98,6 +105,7 @@ func chatHistoryEntriesForView(
                 tags: [],
                 globalTags: [],
                 localTags: [],
+                customTags: [],
                 forwardInfo: nil,
                 author: channelPeer,
                 text: "",
@@ -179,11 +187,11 @@ func chatHistoryEntriesForView(
         }
         
         if presentationData.largeEmoji, message.media.isEmpty {
-            if messageIsElligibleForLargeCustomEmoji(message) {
+            if messageIsEligibleForLargeCustomEmoji(message) {
                 contentTypeHint = .animatedEmoji
             } else if stickersEnabled && message.text.count == 1, let _ = associatedData.animatedEmojiStickers[message.text.basicEmoji.0], (message.textEntitiesAttribute?.entities.isEmpty ?? true) {
                 contentTypeHint = .animatedEmoji
-            } else if messageIsElligibleForLargeEmoji(message) {
+            } else if messageIsEligibleForLargeEmoji(message) {
                 contentTypeHint = .animatedEmoji
             }
         }
@@ -315,11 +323,11 @@ func chatHistoryEntriesForView(
                     
                     var contentTypeHint: ChatMessageEntryContentType = .generic
                     if presentationData.largeEmoji, topMessage.media.isEmpty {
-                        if messageIsElligibleForLargeCustomEmoji(topMessage) {
+                        if messageIsEligibleForLargeCustomEmoji(topMessage) {
                             contentTypeHint = .animatedEmoji
                         } else if stickersEnabled && topMessage.text.count == 1, let _ = associatedData.animatedEmojiStickers[topMessage.text.basicEmoji.0] {
                             contentTypeHint = .animatedEmoji
-                        } else if messageIsElligibleForLargeEmoji(topMessage) {
+                        } else if messageIsEligibleForLargeEmoji(topMessage) {
                             contentTypeHint = .animatedEmoji
                         }
                     }
@@ -428,6 +436,7 @@ func chatHistoryEntriesForView(
                     tags: message.tags,
                     globalTags: message.globalTags,
                     localTags: message.localTags,
+                    customTags: message.customTags,
                     forwardInfo: message.forwardInfo,
                     author: message.author,
                     text: /*"\(message.adAttribute!.opaqueId.hashValue)" + */message.text,
@@ -449,6 +458,61 @@ func chatHistoryEntriesForView(
             if !view.entries.isEmpty {
                 entries.append(.SearchEntry(presentationData.theme.theme, presentationData.strings))
             }
+        }
+    }
+    if includeEmbeddedSavedChatInfo, let peerId = location.peerId {
+        if !view.isLoading && view.laterId == nil {
+            let string = presentationData.strings.Chat_SavedMessagesTabInfoText
+            let formattedString = parseMarkdownIntoAttributedString(
+                string,
+                attributes: MarkdownAttributes(
+                    body: MarkdownAttributeSet(font: Font.regular(15.0), textColor: .black),
+                    bold: MarkdownAttributeSet(font: Font.regular(15.0), textColor: .black),
+                    link: MarkdownAttributeSet(font: Font.regular(15.0), textColor: .white),
+                    linkAttribute: { url in
+                        return ("URL", url)
+                    }
+                )
+            )
+            var entities: [MessageTextEntity] = []
+            formattedString.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: formattedString.length), options: [], using: { value, range, _ in
+                if let value = value as? UIColor, value == .white {
+                    entities.append(MessageTextEntity(range: range.lowerBound ..< range.upperBound, type: .Bold))
+                }
+            })
+            formattedString.enumerateAttribute(NSAttributedString.Key(rawValue: "URL"), in: NSRange(location: 0, length: formattedString.length), options: [], using: { value, range, _ in
+                if value != nil {
+                    entities.append(MessageTextEntity(range: range.lowerBound ..< range.upperBound, type: .TextMention(peerId: context.account.peerId)))
+                }
+            })
+            
+            let message = Message(
+                stableId: UInt32.max - 1001,
+                stableVersion: 0,
+                id: MessageId(peerId: peerId, namespace: Namespaces.Message.Local, id: 123),
+                globallyUniqueId: nil,
+                groupingKey: nil,
+                groupInfo: nil,
+                threadId: nil,
+                timestamp: Int32.max - 1,
+                flags: [.Incoming],
+                tags: [],
+                globalTags: [],
+                localTags: [],
+                customTags: [],
+                forwardInfo: nil,
+                author: nil,
+                text: "",
+                attributes: [],
+                media: [TelegramMediaAction(action: .customText(text: formattedString.string, entities: entities, additionalAttributes: nil))],
+                peers: SimpleDictionary<PeerId, Peer>(),
+                associatedMessages: SimpleDictionary<MessageId, Message>(),
+                associatedMessageIds: [],
+                associatedMedia: [:],
+                associatedThreadInfo: nil,
+                associatedStories: [:]
+            )
+            entries.append(.MessageEntry(message, presentationData, false, nil, .none, ChatMessageEntryAttributes(rank: nil, isContact: false, contentTypeHint: .generic, updatingMedia: nil, isPlaying: false, isCentered: false, authorStoryStats: nil)))
         }
     }
     

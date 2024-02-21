@@ -137,6 +137,8 @@ swift_library(
         "//submodules/MediaPickerUI",
         "//submodules/AttachmentUI",
         "//submodules/TelegramUI/Components/Settings/BoostLevelIconComponent",
+        "//submodules/Components/MultilineTextComponent",
+        "//submodules/TelegramUI/Components/Settings/PeerNameColorItem",
     ],
     visibility = [
         "//visibility:public",

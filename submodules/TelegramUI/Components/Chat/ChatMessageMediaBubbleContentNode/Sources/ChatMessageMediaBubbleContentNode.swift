@@ -58,11 +58,11 @@ public class ChatMessageMediaBubbleContentNode: ChatMessageBubbleContentNode {
             }
         }
         
-        self.interactiveImageNode.updateMessageReaction = { [weak self] message, value in
+        self.interactiveImageNode.updateMessageReaction = { [weak self] message, value, force, sourceView in
             guard let strongSelf = self, let item = strongSelf.item else {
                 return
             }
-            item.controllerInteraction.updateMessageReaction(message, value)
+            item.controllerInteraction.updateMessageReaction(message, value, force, sourceView)
         }
 
         self.interactiveImageNode.activatePinch = { [weak self] sourceNode in
@@ -256,7 +256,7 @@ public class ChatMessageMediaBubbleContentNode: ChatMessageBubbleContentNode {
             }
             var viewCount: Int?
             var dateReplies = 0
-            var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeer: item.associatedData.accountPeer, message: item.message)
+            var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeerId: item.context.account.peerId, accountPeer: item.associatedData.accountPeer, message: item.message)
             if item.message.isRestricted(platform: "ios", contentSettings: item.context.currentContentSettings.with { $0 }) {
                 dateReactionsAndPeers = ([], [])
             }

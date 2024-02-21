@@ -63,6 +63,7 @@ public final class ChatRecentActionsController: TelegramBaseController {
         self.panelInteraction = ChatPanelInterfaceInteraction(setupReplyMessage: { _, _ in
         }, setupEditMessage: { _, _ in
         }, beginMessageSelection: { _, _ in
+        }, cancelMessageSelection: { _ in
         }, deleteSelectedMessages: {
         }, reportSelectedMessages: {
         }, reportMessages: { _, _ in
@@ -102,6 +103,7 @@ public final class ChatRecentActionsController: TelegramBaseController {
         }, finishMediaRecording: { _ in
         }, stopMediaRecording: {
         }, lockMediaRecording: {
+        }, resumeMediaRecording: {
         }, deleteRecordedMedia: {
         }, sendRecordedMedia: { _, _ in
         }, displayRestrictedInfo: { _, _ in
@@ -165,6 +167,11 @@ public final class ChatRecentActionsController: TelegramBaseController {
         }, addDoNotTranslateLanguage: { _ in
         }, hideTranslationPanel: {
         }, openPremiumGift: {
+        }, openPremiumRequiredForMessaging: {
+        }, openBoostToUnrestrict: {
+        }, updateVideoTrimRange: { _, _, _, _ in
+        }, updateHistoryFilter: { _ in
+        }, updateDisplayHistoryFilterAsList: { _ in
         }, requestLayout: { _ in
         }, chatController: {
             return nil
@@ -172,7 +179,7 @@ public final class ChatRecentActionsController: TelegramBaseController {
         
         self.navigationItem.titleView = self.titleView
         
-        let rightButton = ChatNavigationButton(action: .search, buttonItem: UIBarButtonItem(image: PresentationResourcesRootController.navigationCompactSearchIcon(self.presentationData.theme), style: .plain, target: self, action: #selector(self.activateSearch)))
+        let rightButton = ChatNavigationButton(action: .search(hasTags: false), buttonItem: UIBarButtonItem(image: PresentationResourcesRootController.navigationCompactSearchIcon(self.presentationData.theme), style: .plain, target: self, action: #selector(self.activateSearch)))
         self.navigationItem.setRightBarButton(rightButton.buttonItem, animated: false)
         
         self.titleView.title = self.presentationData.strings.Channel_AdminLog_TitleAllEvents
@@ -232,7 +239,7 @@ public final class ChatRecentActionsController: TelegramBaseController {
         self.titleView.color = self.presentationData.theme.rootController.navigationBar.primaryTextColor
         self.updateTitle()
         
-        let rightButton = ChatNavigationButton(action: .search, buttonItem: UIBarButtonItem(image: PresentationResourcesRootController.navigationCompactSearchIcon(self.presentationData.theme), style: .plain, target: self, action: #selector(self.activateSearch)))
+        let rightButton = ChatNavigationButton(action: .search(hasTags: false), buttonItem: UIBarButtonItem(image: PresentationResourcesRootController.navigationCompactSearchIcon(self.presentationData.theme), style: .plain, target: self, action: #selector(self.activateSearch)))
         self.navigationItem.setRightBarButton(rightButton.buttonItem, animated: false)
         
         self.statusBar.statusBarStyle = self.presentationData.theme.rootController.statusBarStyle.style

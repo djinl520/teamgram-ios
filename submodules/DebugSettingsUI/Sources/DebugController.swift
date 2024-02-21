@@ -72,8 +72,6 @@ private enum DebugControllerEntry: ItemListNodeEntry {
     case keepChatNavigationStack(PresentationTheme, Bool)
     case skipReadHistory(PresentationTheme, Bool)
     case dustEffect(Bool)
-    case callV2(Bool)
-    case alternativeStoryMedia(Bool)
     case crashOnSlowQueries(PresentationTheme, Bool)
     case crashOnMemoryPressure(PresentationTheme, Bool)
     case clearTips(PresentationTheme)
@@ -83,6 +81,7 @@ private enum DebugControllerEntry: ItemListNodeEntry {
     case resetDatabase(PresentationTheme)
     case resetDatabaseAndCache(PresentationTheme)
     case resetHoles(PresentationTheme)
+    case resetTagHoles
     case reindexUnread(PresentationTheme)
     case resetCacheIndex
     case reindexCache
@@ -125,9 +124,9 @@ private enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.logging.rawValue
         case .webViewInspection, .resetWebViewCache:
             return DebugControllerSection.web.rawValue
-        case .keepChatNavigationStack, .skipReadHistory, .dustEffect, .callV2, .alternativeStoryMedia, .crashOnSlowQueries, .crashOnMemoryPressure:
+        case .keepChatNavigationStack, .skipReadHistory, .dustEffect, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .clearTips, .resetNotifications, .crash, .fillLocalSavedMessageCache, .resetDatabase, .resetDatabaseAndCache, .resetHoles, .reindexUnread, .resetCacheIndex, .reindexCache, .resetBiometricsData, .optimizeDatabase, .photoPreview, .knockoutWallpaper, .storiesExperiment, .storiesJpegExperiment, .playlistPlayback, .enableQuickReactionSwitch, .voiceConference, .experimentalCompatibility, .enableDebugDataDisplay, .acceleratedStickers, .inlineForums, .localTranscription, .enableReactionOverrides, .restorePurchases:
+        case .clearTips, .resetNotifications, .crash, .fillLocalSavedMessageCache, .resetDatabase, .resetDatabaseAndCache, .resetHoles, .resetTagHoles, .reindexUnread, .resetCacheIndex, .reindexCache, .resetBiometricsData, .optimizeDatabase, .photoPreview, .knockoutWallpaper, .storiesExperiment, .storiesJpegExperiment, .playlistPlayback, .enableQuickReactionSwitch, .voiceConference, .experimentalCompatibility, .enableDebugDataDisplay, .acceleratedStickers, .inlineForums, .localTranscription, .enableReactionOverrides, .restorePurchases:
             return DebugControllerSection.experiments.rawValue
         case .logTranslationRecognition, .resetTranslationStates:
             return DebugControllerSection.translation.rawValue
@@ -178,10 +177,6 @@ private enum DebugControllerEntry: ItemListNodeEntry {
             return 16
         case .dustEffect:
             return 17
-        case .callV2:
-            return 18
-        case .alternativeStoryMedia:
-            return 19
         case .crashOnSlowQueries:
             return 20
         case .crashOnMemoryPressure:
@@ -200,50 +195,52 @@ private enum DebugControllerEntry: ItemListNodeEntry {
             return 27
         case .resetHoles:
             return 28
-        case .reindexUnread:
+        case .resetTagHoles:
             return 29
-        case .resetCacheIndex:
+        case .reindexUnread:
             return 30
-        case .reindexCache:
+        case .resetCacheIndex:
             return 31
-        case .resetBiometricsData:
+        case .reindexCache:
             return 32
-        case .optimizeDatabase:
+        case .resetBiometricsData:
             return 33
-        case .photoPreview:
+        case .optimizeDatabase:
             return 34
-        case .knockoutWallpaper:
+        case .photoPreview:
             return 35
-        case .experimentalCompatibility:
+        case .knockoutWallpaper:
             return 36
-        case .enableDebugDataDisplay:
+        case .experimentalCompatibility:
             return 37
-        case .acceleratedStickers:
+        case .enableDebugDataDisplay:
             return 38
-        case .inlineForums:
+        case .acceleratedStickers:
             return 39
-        case .localTranscription:
+        case .inlineForums:
             return 40
-        case .enableReactionOverrides:
+        case .localTranscription:
             return 41
-        case .restorePurchases:
+        case .enableReactionOverrides:
             return 42
-        case .logTranslationRecognition:
+        case .restorePurchases:
             return 43
-        case .resetTranslationStates:
+        case .logTranslationRecognition:
             return 44
-        case .storiesExperiment:
+        case .resetTranslationStates:
             return 45
-        case .storiesJpegExperiment:
+        case .storiesExperiment:
             return 46
-        case .playlistPlayback:
+        case .storiesJpegExperiment:
             return 47
-        case .enableQuickReactionSwitch:
+        case .playlistPlayback:
             return 48
-        case .voiceConference:
+        case .enableQuickReactionSwitch:
             return 49
+        case .voiceConference:
+            return 50
         case let .preferredVideoCodec(index, _, _, _):
-            return 50 + index
+            return 51 + index
         case .disableVideoAspectScaling:
             return 100
         case .enableNetworkFramework:
@@ -951,22 +948,6 @@ private enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
-        case let .callV2(value):
-            return ItemListSwitchItem(presentationData: presentationData, title: "CallV2", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.callV2 = value
-                    return settings
-                }).start()
-            })
-        case let .alternativeStoryMedia(value):
-            return ItemListSwitchItem(presentationData: presentationData, title: "Story Data Saver", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.alternativeStoryMedia = value
-                    return settings
-                }).start()
-            })
         case let .crashOnSlowQueries(_, value):
             return ItemListSwitchItem(presentationData: presentationData, title: "Crash when slow", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1092,6 +1073,19 @@ private enum DebugControllerEntry: ItemListNodeEntry {
                 let controller = OverlayStatusController(theme: presentationData.theme, type: .loading(cancelled: nil))
                 arguments.presentController(controller, nil)
                 let _ = (context.engine.messages.debugAddHoles()
+                |> deliverOnMainQueue).start(completed: {
+                    controller.dismiss()
+                })
+            })
+        case .resetTagHoles:
+            return ItemListActionItem(presentationData: presentationData, title: "Reset Tag Holes", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                guard let context = arguments.context else {
+                    return
+                }
+                let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
+                let controller = OverlayStatusController(theme: presentationData.theme, type: .loading(cancelled: nil))
+                arguments.presentController(controller, nil)
+                let _ = (context.engine.messages.debugResetTagHoles()
                 |> deliverOnMainQueue).start(completed: {
                     controller.dismiss()
                 })
@@ -1420,8 +1414,6 @@ private func debugControllerEntries(sharedContext: SharedAccountContext, present
         entries.append(.skipReadHistory(presentationData.theme, experimentalSettings.skipReadHistory))
         #endif
         entries.append(.dustEffect(experimentalSettings.dustEffect))
-        entries.append(.callV2(experimentalSettings.callV2))
-        entries.append(.alternativeStoryMedia(experimentalSettings.alternativeStoryMedia))
     }
     entries.append(.crashOnSlowQueries(presentationData.theme, experimentalSettings.crashOnLongQueries))
     entries.append(.crashOnMemoryPressure(presentationData.theme, experimentalSettings.crashOnMemoryPressure))
@@ -1434,6 +1426,7 @@ private func debugControllerEntries(sharedContext: SharedAccountContext, present
     entries.append(.resetDatabase(presentationData.theme))
     entries.append(.resetDatabaseAndCache(presentationData.theme))
     entries.append(.resetHoles(presentationData.theme))
+    entries.append(.resetTagHoles)
     if isMainApp {
         entries.append(.reindexUnread(presentationData.theme))
         entries.append(.resetCacheIndex)

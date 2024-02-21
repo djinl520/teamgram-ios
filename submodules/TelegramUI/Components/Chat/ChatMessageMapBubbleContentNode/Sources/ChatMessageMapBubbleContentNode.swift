@@ -192,7 +192,7 @@ public class ChatMessageMapBubbleContentNode: ChatMessageBubbleContentNode {
                 }
                 var viewCount: Int?
                 var dateReplies = 0
-                var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeer: item.associatedData.accountPeer, message: item.message)
+                var dateReactionsAndPeers = mergedMessageReactionsAndPeers(accountPeerId: item.context.account.peerId, accountPeer: item.associatedData.accountPeer, message: item.message)
                 if item.message.isRestricted(platform: "ios", contentSettings: item.context.currentContentSettings.with { $0 }) {
                     dateReactionsAndPeers = ([], [])
                 }
@@ -273,13 +273,15 @@ public class ChatMessageMapBubbleContentNode: ChatMessageBubbleContentNode {
                         layoutInput: .standalone(reactionSettings: shouldDisplayInlineDateReactions(message: item.message, isPremium: item.associatedData.isPremium, forceInline: item.associatedData.forceInlineReactions) ? ChatMessageDateAndStatusNode.StandaloneReactionSettings() : nil),
                         constrainedSize: CGSize(width: constrainedSize.width, height: CGFloat.greatestFiniteMagnitude),
                         availableReactions: item.associatedData.availableReactions,
+                        savedMessageTags: item.associatedData.savedMessageTags,
                         reactions: dateReactionsAndPeers.reactions,
                         reactionPeers: dateReactionsAndPeers.peers,
                         displayAllReactionPeers: item.message.id.peerId.namespace == Namespaces.Peer.CloudUser,
+                        areReactionsTags: item.topMessage.areReactionsTags(accountPeerId: item.context.account.peerId),
                         replyCount: dateReplies,
                         isPinned: item.message.tags.contains(.pinned) && !item.associatedData.isInPinnedListMode && !isReplyThread,
                         hasAutoremove: item.message.isSelfExpiring,
-                        canViewReactionList: canViewMessageReactionList(message: item.message),
+                        canViewReactionList: canViewMessageReactionList(message: item.topMessage, isInline: item.associatedData.isInline),
                         animationCache: item.controllerInteraction.presentationContext.animationCache,
                         animationRenderer: item.controllerInteraction.presentationContext.animationRenderer
                     ))

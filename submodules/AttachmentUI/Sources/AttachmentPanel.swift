@@ -764,6 +764,7 @@ final class AttachmentPanel: ASDisplayNode, UIScrollViewDelegate {
         self.interfaceInteraction = ChatPanelInterfaceInteraction(setupReplyMessage: { _, _  in
         }, setupEditMessage: { _, _ in
         }, beginMessageSelection: { _, _ in
+        }, cancelMessageSelection: { _ in
         }, deleteSelectedMessages: {
         }, reportSelectedMessages: {
         }, reportMessages: { _, _ in
@@ -826,6 +827,7 @@ final class AttachmentPanel: ASDisplayNode, UIScrollViewDelegate {
         }, finishMediaRecording: { _ in
         }, stopMediaRecording: {
         }, lockMediaRecording: {
+        }, resumeMediaRecording: {  
         }, deleteRecordedMedia: {
         }, sendRecordedMedia: { _, _ in
         }, displayRestrictedInfo: { _, _ in
@@ -979,6 +981,11 @@ final class AttachmentPanel: ASDisplayNode, UIScrollViewDelegate {
         }, addDoNotTranslateLanguage: { _ in
         }, hideTranslationPanel: {
         }, openPremiumGift: {
+        }, openPremiumRequiredForMessaging: {
+        }, openBoostToUnrestrict: {
+        }, updateVideoTrimRange: { _, _, _, _ in
+        }, updateHistoryFilter: { _ in
+        }, updateDisplayHistoryFilterAsList: { _ in
         }, requestLayout: { _ in
         }, chatController: {
             return nil

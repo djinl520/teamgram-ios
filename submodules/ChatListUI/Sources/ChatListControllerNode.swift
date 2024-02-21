@@ -151,6 +151,7 @@ public final class ChatListContainerNode: ASDisplayNode, UIGestureRecognizerDele
             previousItemNode.listNode.setPeerThreadPinned = nil
             previousItemNode.listNode.setPeerThreadHidden = nil
             previousItemNode.listNode.peerSelected = nil
+            previousItemNode.listNode.disabledPeerSelected = nil
             previousItemNode.listNode.groupSelected = nil
             previousItemNode.listNode.updatePeerGrouping = nil
             previousItemNode.listNode.contentOffsetChanged = nil
@@ -204,6 +205,9 @@ public final class ChatListContainerNode: ASDisplayNode, UIGestureRecognizerDele
         }
         itemNode.listNode.peerSelected = { [weak self] peerId, threadId, animated, activateInput, promoInfo in
             self?.peerSelected?(peerId, threadId, animated, activateInput, promoInfo)
+        }
+        itemNode.listNode.disabledPeerSelected = { [weak self] peerId, threadId, reason in
+            self?.disabledPeerSelected?(peerId, threadId, reason)
         }
         itemNode.listNode.groupSelected = { [weak self] groupId in
             self?.groupSelected?(groupId)
@@ -390,6 +394,7 @@ public final class ChatListContainerNode: ASDisplayNode, UIGestureRecognizerDele
     var setPeerThreadPinned: ((EnginePeer.Id, Int64, Bool) -> Void)?
     var setPeerThreadHidden: ((EnginePeer.Id, Int64, Bool) -> Void)?
     public var peerSelected: ((EnginePeer, Int64?, Bool, Bool, ChatListNodeEntryPromoInfo?) -> Void)?
+    public var disabledPeerSelected: ((EnginePeer, Int64?, ChatListDisabledPeerReason) -> Void)?
     var groupSelected: ((EngineChatList.Group) -> Void)?
     var updatePeerGrouping: ((EnginePeer.Id, Bool) -> Void)?
     var contentOffset: ListViewVisibleContentOffset?
@@ -1617,7 +1622,7 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         
         let contentNode = ChatListSearchContainerNode(context: self.context, animationCache: self.animationCache, animationRenderer: self.animationRenderer, filter: filter, requestPeerType: nil, location: effectiveLocation, displaySearchFilters: displaySearchFilters, hasDownloads: hasDownloads, initialFilter: initialFilter, openPeer: { [weak self] peer, _, threadId, dismissSearch in
             self?.requestOpenPeerFromSearch?(peer, threadId, dismissSearch)
-        }, openDisabledPeer: { _, _ in
+        }, openDisabledPeer: { _, _, _ in
         }, openRecentPeerOptions: { [weak self] peer in
             self?.requestOpenRecentPeerOptions?(peer)
         }, openMessage: { [weak self] peer, threadId, messageId, deactivateOnAction in
