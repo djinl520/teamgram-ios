@@ -802,6 +802,14 @@ public final class AuthorizationSequenceController: NavigationController, ASAuth
     }
     
     @available(iOS 13.0, *)
+    public func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        guard let lastController = self.viewControllers.last as? ViewController else {
+            return
+        }
+        lastController.present(standardTextAlertController(theme: AlertControllerTheme(presentationData: self.presentationData), title: nil, text: error.localizedDescription, actions: [TextAlertAction(type: .defaultAction, title: self.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+    }
+    
+    @available(iOS 13.0, *)
     public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         return self.view.window!
     }
@@ -1296,18 +1304,9 @@ public final class AuthorizationSequenceController: NavigationController, ASAuth
     }
     
     public static func defaultCountryCode() -> Int32 {
-        var countryId: String? = nil
-        let networkInfo = CTTelephonyNetworkInfo()
-        if let carrier = networkInfo.serviceSubscriberCellularProviders?.values.first {
-            countryId = carrier.isoCountryCode
-        }
-        
-        if countryId == nil {
-            countryId = (Locale.current as NSLocale).object(forKey: .countryCode) as? String
-        }
-        
+        let countryId = (Locale.current as NSLocale).object(forKey: .countryCode) as? String
+     
         var countryCode: Int32 = 1
-        
         if let countryId = countryId {
             let normalizedId = countryId.uppercased()
             for (code, idAndName) in countryCodeToIdAndName {
